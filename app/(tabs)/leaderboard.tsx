@@ -1,51 +1,33 @@
 // app/(tabs)/leaderboard.tsx
-// leaderboard screen with a simple segmented control (global / friends / nearby)
+// friends-only leaderboard — simple list, no tabs
 
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 
 // tiny shape for players
 type Player = { rank: number; name: string; xp: number; you?: boolean }
 
-// demo data for now
-const GLOBAL: Player[] = [
-  { rank: 1, name: 'Sofia', xp: 12500 },
-  { rank: 2, name: 'Elijah', xp: 11750 },
-  { rank: 3, name: 'Jasmine', xp: 11000 },
-  { rank: 20, name: 'You', xp: 7750, you: true },
-  { rank: 21, name: 'Olivia', xp: 7500 },
-  { rank: 22, name: 'Henry', xp: 7250 },
-  { rank: 23, name: 'Amelia', xp: 7000 },
+// demo friends data
+const FRIENDS: Player[] = [
+  { rank: 1, name: 'sofia', xp: 12500 },
+  { rank: 2, name: 'elijah', xp: 11750 },
+  { rank: 3, name: 'jasmine', xp: 11000 },
+  { rank: 7, name: 'mason', xp: 9800 },
+  { rank: 12, name: 'mia', xp: 9100 },
+  { rank: 20, name: 'you', xp: 7750, you: true },
+  { rank: 21, name: 'olivia', xp: 7500 },
+  { rank: 22, name: 'henry', xp: 7250 },
 ]
 
-// quick clones to fake other tabs
-const FRIENDS = GLOBAL.map(p => ({ ...p }))  // mock
-const NEARBY = GLOBAL.map(p => ({ ...p }))   // mock
-
 export default function Leaderboard() {
-  // which tab is active
-  const [tab, setTab] = useState<'Global' | 'Friends' | 'Nearby'>('Global')
-  const data = tab === 'Global' ? GLOBAL : tab === 'Friends' ? FRIENDS : NEARBY
+  const data = FRIENDS
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Leaderboard</Text>
+      {/* simple header */}
+      <Text style={styles.title}>friends leaderboard</Text>
 
-      {/* segmented control */}
-      <View style={styles.segment}>
-        {(['Global', 'Friends', 'Nearby'] as const).map(t => (
-          <Pressable
-            key={t}
-            onPress={() => setTab(t)}
-            style={[styles.segBtn, tab === t && styles.segBtnActive]}
-          >
-            <Text style={[styles.segText, tab === t && styles.segTextActive]}>{t}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* list of players for the current tab */}
+      {/* list of friends */}
       <FlatList
         data={data}
         keyExtractor={item => String(item.rank)}
@@ -83,21 +65,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, gap: 12 },
 
   // big title up top
-  title: { fontSize: 28, fontWeight: '800', marginTop: 6, marginBottom: 8 },
-
-  // pill-style toggle
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: '#e5e7eb',
-    borderRadius: 999,
-    padding: 4,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  segBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999 },
-  segBtnActive: { backgroundColor: '#111827' },
-  segText: { fontWeight: '600', color: '#111827' },
-  segTextActive: { color: 'white' },
+  title: { fontSize: 28, fontWeight: '800', marginTop: 6, marginBottom: 8, textTransform: 'lowercase' },
 
   // leaderboard rows
   card: {
@@ -113,7 +81,7 @@ const styles = StyleSheet.create({
   cardYou: { backgroundColor: '#14532d' },
 
   // left column text
-  rank: { width: 24, color: '#9ca3af', fontWeight: '700', textAlign: 'right' },
+  rank: { width: 28, color: '#9ca3af', fontWeight: '700', textAlign: 'right' },
   name: { fontSize: 16, fontWeight: '700', marginLeft: 6, color: 'white' },
 
   // right column text

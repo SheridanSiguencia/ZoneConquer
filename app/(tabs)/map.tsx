@@ -1,32 +1,30 @@
 // app/(tabs)/map.tsx
-// ride screen with a privacy mask you can toggle
-// when masked, we draw our own blue dot so you still see "you" on the map
+// ride screen with privacy mask toggle
+// start/stop tracking only (no conquer zone)
 
 import * as Location from 'expo-location'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import MapView, { Circle, Marker, Polyline } from 'react-native-maps'
+import MapView, { Marker, Polyline } from 'react-native-maps'
 
-// tiny types
+// tiny type
 type LatLng = { latitude: number; longitude: number }
-type Zone = { id: string; center: LatLng; radius: number }
 
-// default from env (optional). set EXPO_PUBLIC_MASK_LOCATION=true/false in .env
+// default from env (optional)
 const DEFAULT_MASK =
   (process.env.EXPO_PUBLIC_MASK_LOCATION ?? 'true').toString() === 'true'
 
 export default function MapScreen() {
-  // state we render with (masked or real depending on the toggle)
+  // masked or real position we render with
   const [current, setCurrent] = useState<LatLng | null>(null)
   const [path, setPath] = useState<LatLng[]>([])
-  const [zones, setZones] = useState<Zone[]>([])
   const [maskLocation, setMaskLocation] = useState<boolean>(DEFAULT_MASK)
 
-  // handles we keep around
+  // handles
   const watchRef = useRef<Location.LocationSubscription | null>(null)
   const maskRef = useRef<{ dLat: number; dLon: number } | null>(null)
 
-  // apply the current mask offset
+  // apply current mask offset
   const mask = (p: LatLng): LatLng => {
     if (!maskLocation || !maskRef.current) return p
     return {
@@ -35,12 +33,11 @@ export default function MapScreen() {
     }
   }
 
-  // (re)initialize when the screen mounts or when mask mode changes
+  // init on mount and when mask mode changes
   useEffect(() => {
     stopTracking()
     maskRef.current = null
     setPath([])
-    setZones([])
 
     ;(async () => {
       await Location.requestForegroundPermissionsAsync()
@@ -48,17 +45,14 @@ export default function MapScreen() {
       const loc = await Location.getCurrentPositionAsync({})
       const raw = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
 
-      // build a stable offset once, based on the first fix
       if (maskLocation && !maskRef.current) {
-        const distanceM = 6000 + Math.random() * 4000 // 6–10 km
+        // random 6–10km shift, stable for this session
+        const distanceM = 6000 + Math.random() * 4000
         const angle = Math.random() * Math.PI * 2
-
         const metersPerDegLat = 111111
         const metersPerDegLon = 111111 * Math.cos((raw.latitude * Math.PI) / 180)
-
         const dLat = (distanceM * Math.cos(angle)) / metersPerDegLat
         const dLon = (distanceM * Math.sin(angle)) / metersPerDegLon
-
         maskRef.current = { dLat, dLon }
       }
 
@@ -73,7 +67,6 @@ export default function MapScreen() {
   // start watching movement every ~2s or 5m
   const startTracking = async () => {
     if (watchRef.current) return
-
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 5 },
       loc => {
@@ -91,16 +84,10 @@ export default function MapScreen() {
     watchRef.current = null
   }
 
-  // drop a zone where you are (masked or real depending on toggle)
-  const conquerZone = () => {
-    if (!current) return
-    setZones(z => [...z, { id: String(Date.now()), center: current, radius: 60 }]) // ~60m radius
-  }
-
-  // toggle the privacy mask at runtime
+  // toggle privacy mask
   const toggleMask = () => setMaskLocation(m => !m)
 
-  // if no gps yet, center on central park so the map isn’t empty
+  // fallback center so the map isn’t empty
   const region = {
     latitude: current?.latitude ?? 40.7812,
     longitude: current?.longitude ?? -73.9665,
@@ -112,19 +99,15 @@ export default function MapScreen() {
     <View style={{ flex: 1 }}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        // hide the native blue dot when masked so we never leak the real spot
+        // hide native dot when masked so we don’t leak real location
         showsUserLocation={!maskLocation}
         followsUserLocation={!maskLocation}
         initialRegion={region}
         region={current ? region : undefined}
       >
-        {/* when masked, draw our own blue dot at the masked position */}
+        {/* show a custom blue dot when masked */}
         {maskLocation && current && (
-          <Marker
-            coordinate={current}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
+          <Marker coordinate={current} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
             <View style={styles.fakeDotOuter}>
               <View style={styles.fakeDotInner} />
             </View>
@@ -133,18 +116,6 @@ export default function MapScreen() {
 
         {/* breadcrumb line */}
         {path.length > 1 && <Polyline coordinates={path} strokeWidth={4} />}
-
-        {/* conquered zones */}
-        {zones.map(z => (
-          <Circle
-            key={z.id}
-            center={z.center}
-            radius={z.radius}
-            strokeColor='rgba(34,197,94,0.9)'
-            fillColor='rgba(34,197,94,0.25)'
-            strokeWidth={2}
-          />
-        ))}
       </MapView>
 
       {/* hud overlay */}
@@ -155,9 +126,7 @@ export default function MapScreen() {
             onPress={toggleMask}
             style={[styles.maskChip, maskLocation ? styles.maskOn : styles.maskOff]}
           >
-            <Text style={styles.maskChipText}>
-              {maskLocation ? 'mask on' : 'mask off'}
-            </Text>
+            <Text style={styles.maskChipText}>{maskLocation ? 'mask on' : 'mask off'}</Text>
           </Pressable>
         </View>
 
@@ -168,14 +137,9 @@ export default function MapScreen() {
           <Pressable style={[styles.btn, styles.stop]} onPress={stopTracking}>
             <Text style={styles.btnText}>stop</Text>
           </Pressable>
-          <Pressable style={[styles.btn, styles.conquer]} onPress={conquerZone}>
-            <Text style={styles.btnText}>conquer zone</Text>
-          </Pressable>
         </View>
 
-        <Text style={styles.meta}>
-          zones: {zones.length} · points: {path.length}
-        </Text>
+        <Text style={styles.meta}>points: {path.length}</Text>
       </View>
     </View>
   )
@@ -198,14 +162,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   hudTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  maskChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
+
+  maskChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   maskOn: { backgroundColor: '#14532d', borderColor: '#22c55e' },
   maskOff: { backgroundColor: '#1f2937', borderColor: '#cbd5e1' },
+  maskChipText: { color: '#e5e7eb', fontWeight: '800', textTransform: 'lowercase' },
 
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   btn: {
@@ -217,7 +178,6 @@ const styles = StyleSheet.create({
   },
   start: { backgroundColor: '#22c55e' },
   stop: { backgroundColor: '#ef4444' },
-  conquer: { backgroundColor: '#3b82f6' },
   btnText: { color: '#fff', fontWeight: '700' },
   meta: { color: '#fff', textAlign: 'center', marginTop: 6, opacity: 0.9 },
 
@@ -226,16 +186,11 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(59,130,246,0.25)', // soft blue halo
+    backgroundColor: 'rgba(59,130,246,0.25)',
     borderWidth: 2,
     borderColor: '#93c5fd',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fakeDotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#3b82f6', // solid blue center
-  },
+  fakeDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#3b82f6' },
 })
