@@ -15,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { authAPI } from '../services/api';
 
 export default function LoginScreen() {
   // local state for the inputs + tiny loading flag
@@ -26,12 +27,25 @@ export default function LoginScreen() {
   const goToApp = () => router.replace('/(tabs)')
 
   // fake sign-in: show a spinner briefly, then navigate
-  const onSignIn = () => {
+  const onSignIn = async () => {
     setLoading(true)
-    setTimeout(() => {
+    try {
+      // Actually checks with your backend
+      const result = await authAPI.login({ email, password: pass })
+      
+      // ✅ Check if the response indicates success
+      if (result.success) {
+        goToApp()
+      } else {
+        // 🚨 Handle backend error (invalid credentials, etc.)
+        alert(`Login failed: ${result.error}`)
+      }
+    } catch (error) {
+      // 🚨 Handle network errors or API failures
+      alert(`Login failed: ${error.message}`)
+    } finally {
       setLoading(false)
-      goToApp()
-    }, 500)
+    }
   }
 
   return (

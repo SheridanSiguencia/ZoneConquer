@@ -120,28 +120,30 @@ router.post('/login', async (req, res) => {
 
     // 🗄️ Check if user exists
     const userResult = await pool.query(
-      'SELECT id, username, email, password_hash FROM users WHERE email = $1',
-      [email]
+    'SELECT user_id, username, email, password_hash FROM users WHERE email = $1',
+    [email]
     );
-
+  
+    // 🛡️ CHECK IF USER EXISTS FIRST - ADD THIS
     if (userResult.rows.length === 0) {
-      return res.status(401).json({
+        return res.status(401).json({
         success: false,
-        error: 'No account found with this email'
-      });
+        error: 'Invalid email or password'
+        });
     }
 
-    const user = userResult.rows[0];
-
-    // 🔐 Check password with bcrypt
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false, 
-        error: 'Incorrect password'
-      });
-    }
+  const user = userResult.rows[0];
+  
+  // 🔐 Check password with bcrypt
+  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+  
+  // 🛡️ THEN check password
+  if (!isPasswordValid) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid email or password'
+    });
+  }
 
     // ✅ SUCCESS
     console.log('Login successful for user:', user.username);
@@ -150,7 +152,7 @@ router.post('/login', async (req, res) => {
       success: true,
       message: 'Login successful! 🎉',
       user: {
-        id: user.id,
+        id: user.user_id,
         username: user.username,
         email: user.email
       },

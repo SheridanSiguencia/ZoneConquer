@@ -25,3 +25,8 @@ app.listen(PORT, () => {
   console.log(`🚀 ZoneConquer backend running on http://localhost:${PORT}`);
 });
 
+// This is for user connection 
+const userRoutes = require('./routes/user'); // ← Add this line
+
+// routes section
+app.use('/api/user', userRoutes); // ← Add this line
