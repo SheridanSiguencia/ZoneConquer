@@ -1,6 +1,5 @@
 // app/login.tsx
-// simple login screen with fake auth
-// sign in or continue as guest → goes to the tabs
+// sign in ui with a big centered create account button under sign in
 
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -18,12 +17,11 @@ import {
 import { authAPI } from '../services/api';
 
 export default function LoginScreen() {
-  // local state for the inputs + tiny loading flag
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // after “login”, head into the app (tabs)
+  // after “login”, go straight to the app
   const goToApp = () => router.replace('/(tabs)')
 
   // fake sign-in: show a spinner briefly, then navigate
@@ -49,74 +47,79 @@ export default function LoginScreen() {
   }
 
   return (
-    // keep keyboard from covering inputs on ios
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.select({ ios: 'padding', android: undefined })}
     >
       <View style={styles.container}>
-        {/* tiny brand moment */}
+        {/* brand */}
         <View style={styles.hero}>
           <View style={styles.logoCircle}>
-            <Ionicons name='map-outline' size={36} color='#22c55e' />
+            <Ionicons name="map-outline" size={36} color="#22c55e" />
           </View>
           <Text style={styles.title}>ZoneConquer</Text>
-          <Text style={styles.subtitle}>Walk. Ride. Claim your territory.</Text>
+          <Text style={styles.subtitle}>walk. ride. claim your territory.</Text>
         </View>
 
-        {/* the card with inputs + buttons */}
+        {/* card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sign in</Text>
+          <Text style={styles.cardTitle}>sign in</Text>
 
-          {/* email input */}
           <View style={styles.inputWrap}>
-            <Ionicons name='mail-outline' size={18} color='#64748b' style={{ marginRight: 8 }} />
+            <Ionicons name="mail-outline" size={18} color="#64748b" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder='Email'
-              autoCapitalize='none'
-              keyboardType='email-address'
+              placeholder="email"
+              autoCapitalize="none"
+              keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
-              placeholderTextColor='#94a3b8'
-              returnKeyType='next'
+              placeholderTextColor="#94a3b8"
+              returnKeyType="next"
             />
           </View>
 
-          {/* password input */}
           <View style={styles.inputWrap}>
-            <Ionicons name='lock-closed-outline' size={18} color='#64748b' style={{ marginRight: 8 }} />
+            <Ionicons name="lock-closed-outline" size={18} color="#64748b" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder='Password'
+              placeholder="password"
               secureTextEntry
               value={pass}
               onChangeText={setPass}
-              placeholderTextColor='#94a3b8'
-              returnKeyType='go'
+              placeholderTextColor="#94a3b8"
+              returnKeyType="go"
               onSubmitEditing={onSignIn}
             />
           </View>
 
-          {/* primary action */}
+          {/* primary sign in */}
           <Pressable
             style={[styles.btn, (!email || !pass || loading) && styles.btnDisabled]}
             onPress={onSignIn}
             disabled={!email || !pass || loading}
           >
-            {loading ? <ActivityIndicator /> : <Text style={styles.btnText}>Sign In</Text>}
+            {loading ? <ActivityIndicator /> : <Text style={styles.btnText}>sign in</Text>}
           </Pressable>
 
-          {/* quick way in for the demo */}
-          <Pressable onPress={goToApp} style={{ marginTop: 8 }}>
-            <Text style={styles.link}>Continue as guest</Text>
+          {/* create account — same style as sign in */}
+          <Pressable
+          style={[styles.btn, { marginTop: 10 }]}
+          onPress={() => router.push('/signup')}
+          >
+          <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.btnText}>create account</Text>
+          </Pressable>
+
+          {/* guest path for demos */}
+          <Pressable onPress={goToApp} style={{ marginTop: 10 }}>
+            <Text style={styles.link}>continue as guest</Text>
           </Pressable>
         </View>
 
-        {/* tiny legal line */}
         <Text style={styles.footer}>
-          By continuing you agree to our <Text style={styles.link}>Terms</Text> &{' '}
-          <Text style={styles.link}>Privacy</Text>.
+          by continuing you agree to our <Text style={styles.link}>terms</Text> &{' '}
+          <Text style={styles.link}>privacy</Text>.
         </Text>
       </View>
     </KeyboardAvoidingView>
@@ -127,13 +130,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 20, justifyContent: 'center' },
   hero: { alignItems: 'center', marginBottom: 18 },
   logoCircle: {
-    height: 64,
-    width: 64,
-    borderRadius: 9999,
+    height: 64, width: 64, borderRadius: 9999,
     backgroundColor: '#e6ffef',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
   title: { fontSize: 28, fontWeight: '900', color: '#111827' },
   subtitle: { color: '#475569', marginTop: 4, textAlign: 'center' },
@@ -153,7 +152,7 @@ const styles = StyleSheet.create({
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#f0f0f0ff',
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 44,
@@ -168,9 +167,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 44,
     marginTop: 4,
+    flexDirection: 'row',
   },
   btnDisabled: { opacity: 0.5 },
   btnText: { color: 'white', fontWeight: '800' },
+
+  // big centered create account button
+  btnBig: {
+    marginTop: 12,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    width: '100%',
+  },
+  // NEW: solid, high-contrast button so text is visible
+  btnBigGreen: {
+    backgroundColor: '#16a34a',
+    borderWidth: 2,
+    borderColor: '#065f46',
+  },
+  btnBigText: { color: 'white', fontWeight: '900', fontSize: 16 },
 
   link: { color: '#2563eb', fontWeight: '700' },
   footer: { textAlign: 'center', color: '#64748b', marginTop: 12, fontSize: 12 },

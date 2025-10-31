@@ -1,7 +1,7 @@
 // app/(tabs)/map.tsx
-// ride screen with privacy mask toggle
-// start/stop tracking only (no conquer zone)
+// ride screen with distance in miles, bottom hud, and a privacy mask toggle
 
+import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -14,11 +14,27 @@ type LatLng = { latitude: number; longitude: number }
 const DEFAULT_MASK =
   (process.env.EXPO_PUBLIC_MASK_LOCATION ?? 'true').toString() === 'true'
 
+// quick distance between two lat/lngs (meters)
+const haversineMeters = (a: LatLng, b: LatLng) => {
+  const toRad = (x: number) => (x * Math.PI) / 180
+  const R = 6371000
+  const dLat = toRad(b.latitude - a.latitude)
+  const dLon = toRad(b.longitude - a.longitude)
+  const lat1 = toRad(a.latitude)
+  const lat2 = toRad(b.latitude)
+  const sinDLat = Math.sin(dLat / 2)
+  const sinDLon = Math.sin(dLon / 2)
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
 export default function MapScreen() {
   // masked or real position we render with
   const [current, setCurrent] = useState<LatLng | null>(null)
   const [path, setPath] = useState<LatLng[]>([])
+  const [distanceMeters, setDistanceMeters] = useState(0)
   const [maskLocation, setMaskLocation] = useState<boolean>(DEFAULT_MASK)
+  const [isTracking, setIsTracking] = useState(false)
 
   // handles
   const watchRef = useRef<Location.LocationSubscription | null>(null)
@@ -38,6 +54,7 @@ export default function MapScreen() {
     stopTracking()
     maskRef.current = null
     setPath([])
+    setDistanceMeters(0)
 
     ;(async () => {
       await Location.requestForegroundPermissionsAsync()
@@ -46,7 +63,8 @@ export default function MapScreen() {
       const raw = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
 
       if (maskLocation && !maskRef.current) {
-        // random 6–10km shift, stable for this session
+        // random 6–10mi shift? nah keep 6–10km so local geometry still feels right
+        // but miles display won’t care since it’s a constant offset
         const distanceM = 6000 + Math.random() * 4000
         const angle = Math.random() * Math.PI * 2
         const metersPerDegLat = 111111
@@ -67,13 +85,34 @@ export default function MapScreen() {
   // start watching movement every ~2s or 5m
   const startTracking = async () => {
     if (watchRef.current) return
+    setIsTracking(true)
+
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, timeInterval: 2000, distanceInterval: 5 },
       loc => {
         const raw = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
         const p = mask(raw)
+
         setCurrent(p)
-        setPath(prev => [...prev, p])
+        setPath(prev => {
+          if (prev.length === 0) return [p]
+
+          // filters to keep distance sane
+          const last = prev[prev.length - 1]
+          const delta = haversineMeters(last, p)
+
+          const acc = loc.coords.accuracy ?? 0
+          const badAccuracy = acc && acc > 50          // ignore poor fixes
+          const tooSmall = delta < 3                    // ignore jitter
+          const tooLarge = delta > 200                  // ignore spikes
+
+          if (!badAccuracy && !tooSmall && !tooLarge) {
+            setDistanceMeters(d => d + delta)
+            return [...prev, p]
+          }
+          // still move the current marker even if we skip adding to the path
+          return prev
+        })
       }
     )
   }
@@ -82,10 +121,14 @@ export default function MapScreen() {
   const stopTracking = () => {
     watchRef.current?.remove()
     watchRef.current = null
+    setIsTracking(false)
   }
 
   // toggle privacy mask
   const toggleMask = () => setMaskLocation(m => !m)
+
+  // convert meters → miles for display
+  const distanceMi = distanceMeters / 1609.344
 
   // fallback center so the map isn’t empty
   const region = {
@@ -118,70 +161,112 @@ export default function MapScreen() {
         {path.length > 1 && <Polyline coordinates={path} strokeWidth={4} />}
       </MapView>
 
-      {/* hud overlay */}
+      {/* bottom hud */}
       <View style={styles.hud}>
+        {/* top row inside the card */}
         <View style={styles.hudTop}>
-          <Text style={styles.hudTitle}>ride</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.hudLabel}>distance</Text>
+            <Text style={styles.hudValue}>{distanceMi.toFixed(2)} mi</Text>
+          </View>
+
           <Pressable
             onPress={toggleMask}
             style={[styles.maskChip, maskLocation ? styles.maskOn : styles.maskOff]}
           >
+            <Ionicons
+              name={maskLocation ? 'eye-off-outline' : 'eye-outline'}
+              size={14}
+              color={maskLocation ? '#86efac' : '#e5e7eb'}
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.maskChipText}>{maskLocation ? 'mask on' : 'mask off'}</Text>
           </Pressable>
         </View>
 
+        {/* buttons row */}
         <View style={styles.row}>
-          <Pressable style={[styles.btn, styles.start]} onPress={startTracking}>
+          <Pressable
+            style={[styles.btn, styles.start, isTracking && styles.btnDisabled]}
+            onPress={startTracking}
+            disabled={isTracking}
+          >
+            <Ionicons name='play' size={16} color='#fff' style={{ marginRight: 6 }} />
             <Text style={styles.btnText}>start</Text>
           </Pressable>
-          <Pressable style={[styles.btn, styles.stop]} onPress={stopTracking}>
+
+          <Pressable
+            style={[styles.btn, styles.stop, !isTracking && styles.btnDisabled]}
+            onPress={stopTracking}
+            disabled={!isTracking}
+          >
+            <Ionicons name='stop' size={16} color='#fff' style={{ marginRight: 6 }} />
             <Text style={styles.btnText}>stop</Text>
           </Pressable>
         </View>
-
-        <Text style={styles.meta}>points: {path.length}</Text>
       </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  // floating panel at the bottom
   hud: {
     position: 'absolute',
     left: 12,
     right: 12,
-    top: 12,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    bottom: 12,
+    backgroundColor: 'rgba(10,15,25,0.85)',
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.25)',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
+
+  // top row inside the hud: distance on left, mask chip on right
   hudTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  hudTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  hudLabel: { color: '#cbd5e1', fontSize: 12, textTransform: 'lowercase' },
+  hudValue: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 2 },
 
-  maskChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
-  maskOn: { backgroundColor: '#14532d', borderColor: '#22c55e' },
-  maskOff: { backgroundColor: '#1f2937', borderColor: '#cbd5e1' },
+  // mask toggle chip
+  maskChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  maskOn: { backgroundColor: '#0a1a12', borderColor: '#22c55e' },
+  maskOff: { backgroundColor: '#111827', borderColor: '#cbd5e1' },
   maskChipText: { color: '#e5e7eb', fontWeight: '800', textTransform: 'lowercase' },
 
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  // buttons
+  row: { flexDirection: 'row', gap: 10 },
   btn: {
     flex: 1,
-    paddingVertical: 10,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
-    marginHorizontal: 4,
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
+  btnDisabled: { opacity: 0.5 },
   start: { backgroundColor: '#22c55e' },
   stop: { backgroundColor: '#ef4444' },
-  btnText: { color: '#fff', fontWeight: '700' },
-  meta: { color: '#fff', textAlign: 'center', marginTop: 6, opacity: 0.9 },
+  btnText: { color: '#fff', fontWeight: '800', textTransform: 'lowercase' },
 
-  // custom masked "blue dot"
+  // custom masked blue dot
   fakeDotOuter: {
     width: 22,
     height: 22,

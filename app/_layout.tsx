@@ -1,15 +1,17 @@
 // app/_layout.tsx
-import { Stack } from "expo-router";
+// root stack: login, signup, and your tabbed app
+
+import { Stack } from 'expo-router'
 
 export default function RootLayout() {
   return (
-    <Stack>
-      {/* Login route (no header) */}
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      {/* Tabs group (no header; the tabs header is managed inside (tabs)/_layout) */}
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      {/* Optional modal (keep only if you use app/modal.tsx) */}
-      <Stack.Screen name="modal" options={{ presentation: "modal", title: "" }} />
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* auth screens */}
+      <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
+
+      {/* main app (tabs group keeps its own headers) */}
+      <Stack.Screen name="(tabs)" />
     </Stack>
-  );
+  )
 }
