@@ -2,6 +2,7 @@
 // simple profile screen for demo
 // shows a header card, some stats, small achievements list, a couple toggles, and actions
 
+import { Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useCallback, useState } from 'react'
@@ -45,10 +46,13 @@ export default function ProfileScreen() {
           <Text style={styles.handle}>@alex</Text>
         </View>
 
-        <Pressable style={styles.editBtn}>
-          <Ionicons name='create-outline' size={16} color='#111827' />
-          <Text style={styles.editBtnText}>Edit</Text>
-        </Pressable>
+        <Link href="/customize" asChild>
+          <Pressable style={styles.editBtn}>
+            <Ionicons name='create-outline' size={16} color='#111827' />
+            <Text style={styles.editBtnText}>Edit</Text>
+          </Pressable>
+        </Link>
+
       </View>
 
       {/* quick stats row */}
