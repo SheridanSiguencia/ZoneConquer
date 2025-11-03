@@ -236,6 +236,12 @@ const styles = StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionTitle: { color: '#e5e7eb', fontWeight: '900', textTransform: 'lowercase' },
   sectionMeta: { color: '#a5b4fc', fontWeight: '700' },
+  link: {
+    color: '#93c5fd',          // readable on dark bg
+    fontWeight: '800',
+    textTransform: 'lowercase'
+    // textDecorationLine: 'underline', // optional
+  },
 
   // progress
   progressTrack: {
