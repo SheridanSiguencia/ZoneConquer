@@ -96,80 +96,83 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ✅ USER LOGIN ROUTE
+// ✅ USER LOGIN ROUTE - FIXED VERSION
 router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    console.log('🔐 Login attempt for:', email);
-
-    // 🛡️ Validation
-    if (!email || !password) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Email and password are required' 
-      });
-    }
-
-    if (!email.includes('@') || !email.includes('.')) {
-      return res.status(400).json({
-        success: false, 
-        error: 'Invalid email format'
-      });
-    }
-
-    // 🗄️ Check if user exists
-    const userResult = await pool.query(
-    'SELECT user_id, username, email, password_hash FROM users WHERE email = $1',
-    [email]
-    );
+    try {
+      const { email, password } = req.body;
   
-    // 🛡️ CHECK IF USER EXISTS FIRST - ADD THIS
-    if (userResult.rows.length === 0) {
-        return res.status(401).json({
-        success: false,
-        error: 'Invalid email or password'
+      console.log('🔐 Login attempt for:', email);
+  
+      // 🛡️ Validation
+      if (!email || !password) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Email and password are required' 
         });
-    }
-
-  const user = userResult.rows[0];
-  
-  // 🔐 Check password with bcrypt
-  const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-  
-  // 🛡️ THEN check password
-  if (!isPasswordValid) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid email or password'
-    });
-  }
-
-    // ✅ SUCCESS
-    console.log('Login successful for user:', user.username);
-    
-    res.json({
-      success: true,
-      message: 'Login successful! 🎉',
-      user: {
-        id: user.user_id,
-        username: user.username,
-        email: user.email
-      },
-      game_data: {
-        level: 1,
-        territories_owned: 0,
-        total_area: 0
       }
-    });
-
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Login failed due to server error' 
-    });
-  }
-});
+  
+      if (!email.includes('@') || !email.includes('.')) {
+        return res.status(400).json({
+          success: false, 
+          error: 'Invalid email format'
+        });
+      }
+  
+      // 🗄️ Check if user exists
+      const userResult = await pool.query(
+        'SELECT user_id, username, email, password_hash FROM users WHERE email = $1',
+        [email]
+      );
+    
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password'
+        });
+      }
+  
+      const user = userResult.rows[0];
+    
+      // 🔐 Check password with bcrypt
+      const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+    
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password'
+        });
+      }
+  
+      // ✅ SET SESSION - THIS IS WHAT WAS MISSING!
+      req.session.user_id = user.user_id;
+      req.session.username = user.username;
+      console.log('🔐 Session set for user:', user.user_id);
+  
+      // ✅ SUCCESS
+      console.log('Login successful for user:', user.username);
+      
+      res.json({
+        success: true,
+        message: 'Login successful! 🎉',
+        user: {
+          id: user.user_id,
+          username: user.username,
+          email: user.email
+        },
+        game_data: {
+          level: 1,
+          territories_owned: 0,
+          total_area: 0
+        }
+      });
+  
+    } catch (error) {
+      console.error('🔴 Login error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Login failed: ' + error.message
+      });
+    }
+  });
 
 module.exports = router;

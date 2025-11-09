@@ -2,8 +2,11 @@ const { Pool } = require('pg');
 
 // Connect to Neon Cloud db (now everyone can use)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL // This uses your Neon connection string from .env
-});
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
 
 // Test connection
 pool.query('SELECT NOW()', (err, res) => {
@@ -13,5 +16,8 @@ pool.query('SELECT NOW()', (err, res) => {
     console.log('✅ Connected to Neon PostgreSQL at:', res.rows[0].now);
   }
 });
+
+// Temp debug code
+console.log('🔗 Database connecting to:', process.env.DATABASE_URL);
 
 module.exports = pool;

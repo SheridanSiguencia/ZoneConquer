@@ -1,18 +1,37 @@
+require('dotenv').config({ path: '../.env' });
+
 const express = require('express');
+const session = require('express-session');  
 const cors = require('cors');
-const authRoutes = require('./routes/auth'); // ← Add this
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/user');
 
 const app = express();
 const PORT = 3000;
 
-// Middleware
-app.use(cors());
+// ✅ MIDDLEWARE ORDER MATTERS!
+app.use(cors({
+    origin: true,  // Allows all origins (or specify your Expo app URL)
+    credentials: true  // ← THIS IS CRITICAL for sessions to work!
+  }));
 app.use(express.json());
 
-// Routes
-app.use('/api/auth', authRoutes); // ← Add this
+// ✅ SESSION MIDDLEWARE MUST COME BEFORE ROUTES
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'zoneconquer-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: false,
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
 
-// Simple test route
+// ✅ THEN YOUR ROUTES (after session middleware)
+app.use('/api/auth', authRoutes); 
+app.use('/api/user', userRoutes);
+
+// Test route
 app.get('/api/test', (req, res) => {
   res.json({ 
     message: 'Backend is working!',
@@ -20,13 +39,6 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 ZoneConquer backend running on http://localhost:${PORT}`);
 });
-
-// This is for user connection 
-const userRoutes = require('./routes/user'); // ← Add this line
-
-// routes section
-app.use('/api/user', userRoutes); // ← Add this line

@@ -15,15 +15,39 @@ export interface User {
   email: string;
 }
 
+export interface UserStats {
+  user_id: string;
+  territories_owned: number;
+  current_streak: number;
+  today_distance: number;
+  weekly_distance: number;
+  weekly_goal: number;
+}
 
 // The actual API functions
 export const authAPI = {
+  async register(userData: { username: string; email: string; password: string }) {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData),
+    });
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Registration failed');
+    }
+
+    return result;
+  },
   async login(credentials: LoginData) {
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',  // ← THIS IS REQUIRED for sessions!
       body: JSON.stringify(credentials),
     });
 
@@ -39,25 +63,22 @@ export const authAPI = {
     return result;
   },
 };
-// Add UserStats interface
-export interface UserStats {
-  user_id: string;
-  total_distance_km: number;
-  territories_owned: number;
-  current_streak: number;
-  today_distance?: number;
-}
-
-// user 
+// ✅ ADD THE MISSING userAPI export!
 export const userAPI = {
-  async getStats(userId: string) {
-    const response = await fetch(`${API_BASE}/user/stats?user_id=${userId}`);
+  async getStats(): Promise<UserStats> {
+    const response = await fetch(`${API_BASE}/user/stats`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
     
     if (!response.ok) {
       throw new Error('Failed to fetch user stats');
     }
     
-    return await response.json();
+    const result = await response.json();
+    return result;
   }
 };
-  
