@@ -1,8 +1,10 @@
 // app/(tabs)/map.tsx
 // ride screen with distance (mi), bottom hud, privacy mask,
-// loop detection  territory fill, and a multi-route simulator
+// loop detection → territory fill, a multi-route simulator,
+// and local persistence for claimed territory
 
 import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -12,11 +14,14 @@ import MapView, { Marker, Polygon, Polyline } from 'react-native-maps'
 type LatLng = { latitude: number; longitude: number }
 type XY = { x: number; y: number }
 
-// demo-friendly thresholds (raise for real outdoor use)
+// thresholds for what counts as a “real” loop
 const MIN_PERIMETER_M = 80
 const MIN_AREA_M2 = 800
 const MIN_RING_POINTS = 4
 const CLOSE_EPS_M = 12
+
+// local storage key for territory
+const LOOPS_KEY = 'zoneconquer_loops_v1'
 
 // allow turning privacy mask off via env if you want
 const DEFAULT_MASK =
@@ -39,14 +44,14 @@ const haversineMeters = (a: LatLng, b: LatLng) => {
 export default function MapScreen() {
   // live position (masked if privacy is on)
   const [current, setCurrent] = useState<LatLng | null>(null)
-  // breadcrumb line you’re drawing
+  // breadcrumb line you’re drawing this session
   const [path, setPath] = useState<LatLng[]>([])
   // distance accumulator (meters)
   const [distanceMeters, setDistanceMeters] = useState(0)
   // privacy + tracking toggles
   const [maskLocation, setMaskLocation] = useState<boolean>(DEFAULT_MASK)
   const [isTracking, setIsTracking] = useState(false)
-  // claimed polygons + total area
+  // claimed polygons + total area (these are what we persist)
   const [loops, setLoops] = useState<LatLng[][]>([])
   const [totalAreaM2, setTotalAreaM2] = useState(0)
 
@@ -81,7 +86,27 @@ export default function MapScreen() {
     return { latitude: p.latitude + maskRef.current.dLat, longitude: p.longitude + maskRef.current.dLon }
   }
 
-  // init / reinit on mask toggle
+  // load saved territory once on mount
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LOOPS_KEY)
+        if (!raw) return
+
+        const parsed = JSON.parse(raw) as { loops?: LatLng[][]; totalAreaM2?: number }
+        if (Array.isArray(parsed.loops)) {
+          setLoops(parsed.loops)
+        }
+        if (typeof parsed.totalAreaM2 === 'number') {
+          setTotalAreaM2(parsed.totalAreaM2)
+        }
+      } catch (e) {
+        console.warn('failed to load saved territory', e)
+      }
+    })()
+  }, [])
+
+  // init / reinit on mask toggle (live session only)
   useEffect(() => {
     stopTracking()
     stopSim()
@@ -113,8 +138,32 @@ export default function MapScreen() {
       xyRef.current = [toXY(first)]
     })()
 
-    return () => { stopTracking(); stopSim() }
+    return () => {
+      stopTracking()
+      stopSim()
+    }
   }, [maskLocation])
+
+  // persist territory whenever loops / area change on real-location sessions
+  useEffect(() => {
+    ;(async () => {
+      try {
+        if (!maskLocation) {
+          if (loops.length || totalAreaM2 > 0) {
+            await AsyncStorage.setItem(
+              LOOPS_KEY,
+              JSON.stringify({ loops, totalAreaM2 })
+            )
+          } else {
+            await AsyncStorage.removeItem(LOOPS_KEY)
+          }
+        }
+        // when mask is on we treat everything as “demo only” and don’t overwrite saved real data
+      } catch (e) {
+        console.warn('failed to save territory', e)
+      }
+    })()
+  }, [loops, totalAreaM2, maskLocation])
 
   // handle a newly observed point
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
@@ -172,7 +221,7 @@ export default function MapScreen() {
       loc => {
         const raw = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
         const p = mask(raw)
-        handleNewPoint(p, (loc.coords.accuracy ?? 5))
+        handleNewPoint(p, loc.coords.accuracy ?? 5)
       }
     )
   }
@@ -186,7 +235,7 @@ export default function MapScreen() {
   // simple multi-route simulator (select route with the chip, then press sim ride)
   type SimRouteName = 'campusSquare' | 'bigLoop' | 'triangle' | 'nearGate' | 'figure8' | 'skinnyRibbon'
   const [routeName, setRouteName] = useState<SimRouteName>('campusSquare')
-  const ROUTE_ORDER: SimRouteName[] = ['campusSquare','bigLoop','triangle','nearGate','figure8','skinnyRibbon']
+  const ROUTE_ORDER: SimRouteName[] = ['campusSquare', 'bigLoop', 'triangle', 'nearGate', 'figure8', 'skinnyRibbon']
 
   // short labels so the chip text stays compact
   const ROUTE_LABEL: Record<SimRouteName, string> = {
@@ -200,12 +249,12 @@ export default function MapScreen() {
 
   // route shapes in local meters around (0,0) — closed loops
   const ROUTES_XY: Record<SimRouteName, XY[]> = {
-    campusSquare: [{x:0,y:0},{x:120,y:0},{x:120,y:-120},{x:0,y:-120},{x:0,y:0}],
-    bigLoop: [{x:0,y:0},{x:200,y:20},{x:240,y:-120},{x:120,y:-220},{x:-40,y:-180},{x:-60,y:-40},{x:0,y:0}],
-    triangle: [{x:0,y:0},{x:160,y:0},{x:80,y:-140},{x:0,y:0}],
-    nearGate: [{x:0,y:0},{x:90,y:10},{x:110,y:-60},{x:40,y:-100},{x:-50,y:-60},{x:-40,y:-10},{x:0,y:0}],
-    figure8: [{x:0,y:0},{x:80,y:-40},{x:0,y:-80},{x:-80,y:-40},{x:0,y:0},{x:80,y:40},{x:0,y:80},{x:-80,y:40},{x:0,y:0}],
-    skinnyRibbon: [{x:0,y:0},{x:160,y:0},{x:160,y:-30},{x:0,y:-30},{x:0,y:0}],
+    campusSquare: [{ x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: -120 }, { x: 0, y: -120 }, { x: 0, y: 0 }],
+    bigLoop: [{ x: 0, y: 0 }, { x: 200, y: 20 }, { x: 240, y: -120 }, { x: 120, y: -220 }, { x: -40, y: -180 }, { x: -60, y: -40 }, { x: 0, y: 0 }],
+    triangle: [{ x: 0, y: 0 }, { x: 160, y: 0 }, { x: 80, y: -140 }, { x: 0, y: 0 }],
+    nearGate: [{ x: 0, y: 0 }, { x: 90, y: 10 }, { x: 110, y: -60 }, { x: 40, y: -100 }, { x: -50, y: -60 }, { x: -40, y: -10 }, { x: 0, y: 0 }],
+    figure8: [{ x: 0, y: 0 }, { x: 80, y: -40 }, { x: 0, y: -80 }, { x: -80, y: -40 }, { x: 0, y: 0 }, { x: 80, y: 40 }, { x: 0, y: 80 }, { x: -80, y: 40 }, { x: 0, y: 0 }],
+    skinnyRibbon: [{ x: 0, y: 0 }, { x: 160, y: 0 }, { x: 160, y: -30 }, { x: 0, y: -30 }, { x: 0, y: 0 }],
   }
 
   // densify a coarse polyline to ~10 m hops
@@ -276,7 +325,7 @@ export default function MapScreen() {
     longitudeDelta: 0.01,
   }
 
-  // —— loop helpers ——
+  // —— loop helpers ——  
 
   function findClosure(xy: XY[]) {
     const n = xy.length
@@ -439,7 +488,7 @@ export default function MapScreen() {
           </View>
         </View>
 
-        {/* MIDDLE: chips on their own row, wrap on small screens */}
+        {/* MIDDLE: chips row */}
         <View style={styles.chipsRow}>
           <Pressable onPress={toggleMask} style={[styles.chip, maskLocation ? styles.chipOn : styles.chipOff]}>
             <Ionicons
@@ -464,20 +513,38 @@ export default function MapScreen() {
             </Text>
           </Pressable>
 
-          <Pressable onPress={() => (isSimulating ? stopSim() : startSim())} style={[styles.chip, isSimulating ? styles.simOn : styles.simOff]}>
-            <Ionicons name={isSimulating ? 'walk' : 'walk-outline'} size={14} color={isSimulating ? '#111827' : '#e5e7eb'} style={{ marginRight: 6 }} />
-            <Text style={[styles.chipText, isSimulating && { color: '#111827' }]}>{isSimulating ? 'sim on' : 'sim ride'}</Text>
+          <Pressable
+            onPress={() => (isSimulating ? stopSim() : startSim())}
+            style={[styles.chip, isSimulating ? styles.simOn : styles.simOff]}
+          >
+            <Ionicons
+              name={isSimulating ? 'walk' : 'walk-outline'}
+              size={14}
+              color={isSimulating ? '#111827' : '#e5e7eb'}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.chipText, isSimulating && { color: '#111827' }]}>
+              {isSimulating ? 'sim on' : 'sim ride'}
+            </Text>
           </Pressable>
         </View>
 
         {/* BOTTOM: buttons */}
         <View style={styles.row}>
-          <Pressable style={[styles.btn, styles.start, (isTracking || isSimulating) && styles.btnDisabled]} onPress={startTracking} disabled={isTracking || isSimulating}>
+          <Pressable
+            style={[styles.btn, styles.start, (isTracking || isSimulating) && styles.btnDisabled]}
+            onPress={startTracking}
+            disabled={isTracking || isSimulating}
+          >
             <Ionicons name='play' size={16} color='#fff' style={{ marginRight: 6 }} />
             <Text style={styles.btnText}>start</Text>
           </Pressable>
 
-          <Pressable style={[styles.btn, styles.stop, (!isTracking && !isSimulating) && styles.btnDisabled]} onPress={() => { stopTracking(); stopSim() }} disabled={!isTracking && !isSimulating}>
+          <Pressable
+            style={[styles.btn, styles.stop, (!isTracking && !isSimulating) && styles.btnDisabled]}
+            onPress={() => { stopTracking(); stopSim() }}
+            disabled={!isTracking && !isSimulating}
+          >
             <Ionicons name='stop' size={16} color='#fff' style={{ marginRight: 6 }} />
             <Text style={styles.btnText}>stop</Text>
           </Pressable>
@@ -507,11 +574,19 @@ const styles = StyleSheet.create({
   // floating panel at the bottom
   hud: {
     position: 'absolute',
-    left: 12, right: 12, bottom: 12,
+    left: 12,
+    right: 12,
+    bottom: 12,
     backgroundColor: 'rgba(10,15,25,0.85)',
-    padding: 12, borderRadius: 18,
-    borderWidth: 1, borderColor: 'rgba(148,163,184,0.25)',
-    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.25)',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 
   // keep distance block on its own line
@@ -542,7 +617,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    flexShrink: 1,         // allow chips to shrink before breaking layout
+    flexShrink: 1,
   },
   chipText: { color: '#e5e7eb', fontWeight: '800', textTransform: 'lowercase' },
   chipOn: { backgroundColor: '#0a1a12', borderColor: '#22c55e' },
@@ -560,6 +635,15 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: '800', textTransform: 'lowercase' },
 
   // custom masked blue dot
-  fakeDotOuter: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(59,130,246,0.25)', borderWidth: 2, borderColor: '#93c5fd', alignItems: 'center', justifyContent: 'center' },
+  fakeDotOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(59,130,246,0.25)',
+    borderWidth: 2,
+    borderColor: '#93c5fd',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fakeDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#3b82f6' },
 })
