@@ -19,7 +19,7 @@ export const useUserStats = () => {
       // ✅ CONVERT STRINGS TO NUMBERS
       const safeStats: UserStats = {
         user_id: userStats.user_id || 'unknown',
-        total_distance: Number(userStats.total_distance) || 0,
+        //total_distance: Number(userStats.total_distance) || 0,
         territories_owned: Number(userStats.territories_owned) || 0,
         current_streak: Number(userStats.current_streak) || 0,
         today_distance: Number(userStats.today_distance) || 0,     // ← Convert to number
