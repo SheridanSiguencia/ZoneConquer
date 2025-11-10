@@ -1,53 +1,85 @@
 // app/(tabs)/index.tsx
-// home — bold hero, animated-ish cta, weekly progress, friends strip, action grid
-
 import { Ionicons } from '@expo/vector-icons'
 import { Link } from 'expo-router'
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo } from 'react'
+import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
+import { useUserStats } from '../../hooks/useUserStats'
 
 export default function HomeScreen() {
-  // demo data (swap for real)
-  const [stats] = useState({ milesToday: 2.9, zones: 3, streak: 5, weeklyMiles: 18, weeklyGoal: 30 })
-  const weeklyPct = useMemo(() => Math.min(100, Math.round((stats.weeklyMiles / stats.weeklyGoal) * 100)), [stats])
+  const { stats, loading, error, refetch } = useUserStats();
 
+  // ADD this missing function
   const onInvite = useCallback(async () => {
     try {
       await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' })
     } catch {}
   }, [])
 
+  // Calculate weekly percentage
+  const weeklyPct = useMemo(() => {
+    if (!stats || !stats.weekly_goal || stats.weekly_goal === 0) return 0;
+    const weeklyDistance = stats.weekly_distance || 0;
+    return Math.min(100, Math.round((weeklyDistance / stats.weekly_goal) * 100));
+  }, [stats]);
+
+  // ADD loading state
+  if (loading) {
+    return (
+      <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#22c55e" />
+        <Text style={{ color: '#e5e7eb', marginTop: 12 }}>Loading your stats...</Text>
+      </View>
+    );
+  }
+
+  // ADD error state
+  if (error || !stats) {
+    return (
+      <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="warning-outline" size={48} color="#ef4444" />
+        <Text style={{ color: '#ef4444', marginBottom: 12, textAlign: 'center' }}>
+          {error || 'Failed to load stats'}
+        </Text>
+        <Pressable onPress={refetch} style={styles.invite}>
+          <Ionicons name="reload" size={16} color="#111827" />
+          <Text style={styles.inviteText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <View style={styles.screen}>
       {/* decorative orbs for depth without extra deps */}
       <View style={[styles.orb, { top: -60, left: -40, backgroundColor: '#063' }]} />
       <View style={[styles.orb, { top: 220, right: -80, backgroundColor: '#123' }]} />
       <View style={[styles.orb, { bottom: -90, left: -70, backgroundColor: '#1b3' }]} />
-
+  
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* header row */}
         <View style={styles.topRow}>
           <View style={styles.brandRow}>
             <View style={styles.logoDot}>
-              <Ionicons name='map-outline' size={16} color='#22c55e' />
+              <Ionicons name="map-outline" size={16} color="#22c55e" />
             </View>
             <Text style={styles.brand}>zoneconquer</Text>
-            <View style={styles.pill}><Text style={styles.pillText}>beta</Text></View>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>beta</Text>
+            </View>
           </View>
-
+  
           <Pressable onPress={onInvite} style={styles.invite}>
-            <Ionicons name='person-add' size={16} color='#111827' />
+            <Ionicons name="person-add" size={16} color="#111827" />
             <Text style={styles.inviteText}>invite</Text>
           </Pressable>
         </View>
-
+  
         {/* hero card with primary cta */}
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <Text style={styles.heroTitle}>ready to ride?</Text>
             <Text style={styles.heroSub}>walk, bike, loop, claim your zone</Text>
           </View>
-
+  
           <Link href='/(tabs)/map' asChild>
             <Pressable
               style={styles.primaryCta}
@@ -57,94 +89,126 @@ export default function HomeScreen() {
                 <Ionicons name='bicycle' size={18} color='#111827' />
               </View>
               <Text style={styles.primaryCtaText}>start ride</Text>
-              <Ionicons name='chevron-forward' size={18} color='#ffffff' style={{ marginLeft: 6 }} />
+              <Ionicons
+                name='chevron-forward'
+                size={18}
+                color='#ffffff'
+                style={{ marginLeft: 6 }}
+              />
             </Pressable>
           </Link>
-
+  
           {/* quick facts row inside hero */}
           <View style={styles.quickRow}>
             <View style={[styles.quickItem, { borderColor: '#134e4a' }]}>
               <Ionicons name='footsteps' size={14} color='#93e6b8' />
-              <Text style={styles.quickValue}>{stats.milesToday.toFixed(1)} mi</Text>
+              <Text style={styles.quickValue}>{(stats.today_distance || 0).toFixed(1)} mi</Text>
               <Text style={styles.quickLabel}>today</Text>
             </View>
             <View style={[styles.quickItem, { borderColor: '#1f2937' }]}>
               <Ionicons name='earth' size={14} color='#86efac' />
-              <Text style={styles.quickValue}>{stats.zones}</Text>
+              <Text style={styles.quickValue}>{stats.territories_owned || 0}</Text>
               <Text style={styles.quickLabel}>zones</Text>
             </View>
             <View style={[styles.quickItem, { borderColor: '#1e293b' }]}>
               <Ionicons name='flame' size={14} color='#fde68a' />
-              <Text style={styles.quickValue}>{stats.streak}</Text>
+              <Text style={styles.quickValue}>{stats.current_streak || 0}</Text>
               <Text style={styles.quickLabel}>streak</Text>
             </View>
           </View>
-        </View>
-
+        </View> {/* ✅ close heroCard */}
+  
         {/* weekly progress */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>weekly miles</Text>
-            <Text style={styles.sectionMeta}>{stats.weeklyMiles} / {stats.weeklyGoal} mi</Text>
+            <Text style={styles.sectionMeta}>
+              {(stats.weekly_distance || 0).toFixed(1)} / {(stats.weekly_goal || 15).toFixed(0)} mi
+            </Text>
           </View>
-
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${weeklyPct}%` }]} />
           </View>
           <Text style={styles.progressHint}>
-            {weeklyPct}% of goal • keep going to hit {stats.weeklyGoal} mi
+            {weeklyPct}% of goal • keep going to hit {(stats.weekly_goal || 15).toFixed(0)} mi
           </Text>
         </View>
-
+  
         {/* friends strip preview */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>friends</Text>
             <Link href='/(tabs)/leaderboard' asChild>
-              <Pressable hitSlop={8}><Text style={styles.link}>view leaderboard</Text></Pressable>
+              <Pressable hitSlop={8}>
+                <Text style={styles.link}>view leaderboard</Text>
+              </Pressable>
             </Link>
           </View>
-
+  
           <View style={styles.friendsRow}>
-            {['sofia','elijah','jasmine','you','olivia'].map((n, i) => (
-              <View key={n} style={[styles.avatar, { marginLeft: i === 0 ? 0 : -10, backgroundColor: i === 3 ? '#22c55e' : '#0b2' }]}>
+            {['sofia', 'elijah', 'jasmine', 'you', 'olivia'].map((n, i) => (
+              <View
+                key={n}
+                style={[
+                  styles.avatar,
+                  {
+                    marginLeft: i === 0 ? 0 : -10,
+                    backgroundColor: i === 3 ? '#22c55e' : '#0b2',
+                  },
+                ]}
+              >
                 <Text style={styles.avatarText}>{n[0].toUpperCase()}</Text>
               </View>
             ))}
-            <View style={styles.friendPill}><Text style={styles.friendPillText}>+ add</Text></View>
+            <View style={styles.friendPill}>
+              <Text style={styles.friendPillText}>+ add</Text>
+            </View>
           </View>
         </View>
-
+  
         {/* quick actions grid */}
         <Text style={styles.sectionKicker}>quick actions</Text>
         <View style={styles.grid}>
           <Link href='/(tabs)/map' asChild>
-            <Pressable style={[styles.tile, styles.tileGreen]} android_ripple={{ color: 'rgba(0,0,0,0.08)' }}>
+            <Pressable
+              style={[styles.tile, styles.tileGreen]}
+              android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+            >
               <Ionicons name='play' size={20} color='#ffffff' />
               <Text style={styles.tileTextLight}>start ride</Text>
             </Pressable>
           </Link>
-
+  
           <Link href='/(tabs)/map' asChild>
-            <Pressable style={[styles.tile, styles.tileBlue]} android_ripple={{ color: 'rgba(0,0,0,0.08)' }}>
+            <Pressable
+              style={[styles.tile, styles.tileBlue]}
+              android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+            >
               <Ionicons name='map' size={20} color='#ffffff' />
               <Text style={styles.tileTextLight}>open map</Text>
             </Pressable>
           </Link>
-
+  
           <Link href='/(tabs)/leaderboard' asChild>
-            <Pressable style={[styles.tile, styles.tileSlate]} android_ripple={{ color: 'rgba(255,255,255,0.08)' }}>
+            <Pressable
+              style={[styles.tile, styles.tileSlate]}
+              android_ripple={{ color: 'rgba(255,255,255,0.08)' }}
+            >
               <Ionicons name='trophy' size={20} color='#eab308' />
               <Text style={styles.tileTextLight}>leaderboard</Text>
             </Pressable>
           </Link>
-
-          <Pressable style={[styles.tile, styles.tileAmber]} onPress={onInvite} android_ripple={{ color: 'rgba(0,0,0,0.08)' }}>
+  
+          <Pressable
+            style={[styles.tile, styles.tileAmber]}
+            onPress={onInvite}
+            android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+          >
             <Ionicons name='share-social' size={20} color='#111827' />
             <Text style={styles.tileTextDark}>share app</Text>
           </Pressable>
         </View>
-
+  
         {/* privacy note */}
         <View style={styles.note}>
           <Ionicons name='lock-closed-outline' size={14} color='#cbd5e1' />
@@ -152,7 +216,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </View>
-  )
+  )  
 }
 
 const styles = StyleSheet.create({
@@ -242,6 +306,10 @@ const styles = StyleSheet.create({
     textTransform: 'lowercase'
     // textDecorationLine: 'underline', // optional
   },
+
+  //
+  //link: { color: '#a5b4fc', fontWeight: '700' }, //changes text to purple
+  //
 
   // progress
   progressTrack: {

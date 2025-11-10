@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import TermsModal from '../components/TermsModal';
+import { authAPI } from '../services/api';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -27,52 +28,66 @@ export default function LoginScreen() {
   const goToApp = () => router.replace('/(tabs)')
 
   const TERMS_KEY = 'termsAccepted:v2';
-const [showTerms, setShowTerms] = useState(false);
-const [termsMode, setTermsMode] = useState<'gate' | 'review' | null>(null);
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsMode, setTermsMode] = useState<'gate' | 'review' | null>(null);
 
 
-const maybeShowTerms = async () => {
-  try {
-    const seen = await SecureStore.getItemAsync(TERMS_KEY);
-    console.log('[Terms] getItemAsync ->', seen); // debug
-    if (seen === 'true') {
-      return goToApp();
-    }
-  } catch (e) {
-    console.warn('[Terms] SecureStore error', e);
-    // If SecureStore errors, still show the modal so users can proceed
-  }
-  setTermsMode('gate');
-  setShowTerms(true);
-};
-
-const onAcceptTerms = async () => {
-  if (termsMode === 'gate') {
+  const maybeShowTerms = async () => {
     try {
-      await SecureStore.setItemAsync(TERMS_KEY, 'true');
-      console.log('[Terms] setItemAsync -> true');
+      const seen = await SecureStore.getItemAsync(TERMS_KEY);
+      console.log('[Terms] getItemAsync ->', seen); // debug
+      if (seen === 'true') {
+        return goToApp();
+      }
     } catch (e) {
-      console.warn('[Terms] setItemAsync error', e);
-      // even if saving fails, let them proceed
+      console.warn('[Terms] SecureStore error', e);
+      // If SecureStore errors, still show the modal so users can proceed
     }
+    setTermsMode('gate');
+    setShowTerms(true);
+  };
+
+  const onAcceptTerms = async () => {
+    if (termsMode === 'gate') {
+      try {
+        await SecureStore.setItemAsync(TERMS_KEY, 'true');
+        console.log('[Terms] setItemAsync -> true');
+      } catch (e) {
+        console.warn('[Terms] setItemAsync error', e);
+        // even if saving fails, let them proceed
+      }
+      setShowTerms(false);
+      goToApp();                 // only navigate in GATE mode
+    } else {
+      // review mode: just close; no flag, no navigation
+      setShowTerms(false);
+    }
+  };
+    const onCloseTerms = () => {
+    // always just close; stay on sign-in page
     setShowTerms(false);
-    goToApp();                 // only navigate in GATE mode
-  } else {
-    // review mode: just close; no flag, no navigation
-    setShowTerms(false);
+  };
+
+  const onSignIn = async () => {
+    setLoading(true)
+    try {
+      // Actually checks with your backend
+      const result = await authAPI.login({ email, password: pass })
+      
+      // ✅ Check if the response indicates success
+      if (result.success) {
+        goToApp()
+      } else {
+        // 🚨 Handle backend error (invalid credentials, etc.)
+        alert(`Login failed: ${result.error}`)
+      }
+    } catch (error) {
+      // 🚨 Handle network errors or API failures
+      alert(`Login failed: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
   }
-};
-  const onCloseTerms = () => {
-  // always just close; stay on sign-in page
-  setShowTerms(false);
-};
-  const onSignIn = () => {
-  setLoading(true);
-  setTimeout(async () => {
-    setLoading(false);
-    await maybeShowTerms(); // was: goToApp()
-  }, 500);
-};
 
   return (
     <KeyboardAvoidingView

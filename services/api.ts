@@ -1,0 +1,84 @@
+// services/api.ts - Your "API phone book"
+
+// Where your backend lives
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:3000/api';
+
+// Typescript definitions (what data looks like)
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+}
+
+export interface UserStats {
+  user_id: string;
+  territories_owned: number;
+  current_streak: number;
+  today_distance: number;
+  weekly_distance: number;
+  weekly_goal: number;
+}
+
+// The actual API functions
+export const authAPI = {
+  async register(userData: { username: string; email: string; password: string }) {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData),
+    });
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Registration failed');
+    }
+
+    return result;
+  },
+  async login(credentials: LoginData) {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',  // ← THIS IS REQUIRED for sessions!
+      body: JSON.stringify(credentials),
+    });
+
+    const result = await response.json();
+    
+    console.log('🔍 LOGIN RESPONSE:', result); // ADD THIS FOR DEBUGGING
+    
+    // 🛡️ SUPER EXPLICIT CHECK
+    if (!result.success) {
+      throw new Error(result.error || 'Login failed');
+    }
+
+    return result;
+  },
+};
+// ✅ ADD THE MISSING userAPI export!
+export const userAPI = {
+  async getStats(): Promise<UserStats> {
+    const response = await fetch(`${API_BASE}/user/stats`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch user stats');
+    }
+    
+    const result = await response.json();
+    return result;
+  }
+};
