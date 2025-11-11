@@ -116,7 +116,8 @@ export default function HomeScreen() {
               <Text style={styles.quickLabel}>streak</Text>
             </View>
           </View>
-        </View> {/* ✅ close heroCard */}
+        </View> 
+        {/* ✅ close heroCard */}
   
         {/* weekly progress */}
         <View style={styles.sectionCard}>
@@ -306,10 +307,6 @@ const styles = StyleSheet.create({
     textTransform: 'lowercase'
     // textDecorationLine: 'underline', // optional
   },
-
-  //
-  //link: { color: '#a5b4fc', fontWeight: '700' }, //changes text to purple
-  //
 
   // progress
   progressTrack: {
