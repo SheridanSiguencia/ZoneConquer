@@ -2,7 +2,7 @@
 // simple profile screen for demo
 // shows a header card, some stats, small achievements list, a couple toggles, and actions
 
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useCallback, useState } from 'react'
@@ -11,15 +11,52 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';
+
+// --- Gamified Achievements Data ---
+type Achievement = {
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    status: 'unlocked' | 'locked' | 'progress';
+    progress?: number; // 0 to 100
+};
+
+const achievements: Achievement[] = [
+    { icon: 'medal', title: 'First Zone Captured', status: 'unlocked' },
+    { icon: 'bicycle', title: '10 km in a Day', status: 'unlocked' },
+    { icon: 'walk', title: '5,000 Steps', status: 'progress', progress: 75 },
+    { icon: 'people', title: 'Invite 3 Friends', status: 'locked' },
+    { icon: 'calendar', title: '7-Day Streak', status: 'locked' },
+];
+// --- End Achievements Data ---
+
 
 export default function ProfileScreen() {
-  // demo state only, nothing is persisted yet
-  const [shareLocation, setShareLocation] = useState(true)
-  const [notifications, setNotifications] = useState(true)
+  const [name, setName] = useState('Alex Rider');
+  const [handle, setHandle] = useState('@alex');
+
+  // Load profile data when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
+          if (!raw) return;
+
+          const parsed = JSON.parse(raw) as { name?: string; handle?: string };
+          if (parsed.name) setName(parsed.name);
+          if (parsed.handle) setHandle(parsed.handle);
+        } catch (e) {
+          console.warn('failed to load user profile', e);
+        }
+      })();
+    }, [])
+  );
 
   // quick share for invite button
   const onInvite = useCallback(async () => {
@@ -38,94 +75,75 @@ export default function ProfileScreen() {
       {/* header card with avatar + name */}
       <View style={styles.headerCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>A</Text>
+          <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.name}>Alex Rider</Text>
-          <Text style={styles.handle}>@alex</Text>
+          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.handle}>{handle}</Text>
         </View>
 
-        <Link href="/customize" asChild>
-          <Pressable style={styles.editBtn}>
-            <Ionicons name='create-outline' size={16} color='#111827' />
-            <Text style={styles.editBtnText}>Edit</Text>
-          </Pressable>
-        </Link>
-
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Link href="/customize" asChild>
+                <Pressable style={styles.editBtn}>
+                <Ionicons name='create-outline' size={16} color='#111827' />
+                <Text style={styles.editBtnText}>Edit</Text>
+                </Pressable>
+            </Link>
+            <Link href="/settings" asChild>
+                <Pressable style={styles.settingsBtn}>
+                <Ionicons name='settings-outline' size={18} color='#111827' />
+                </Pressable>
+            </Link>
+        </View>
       </View>
 
       {/* quick stats row */}
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { backgroundColor: '#111827' }]}>
-          <Ionicons name='trophy' size={18} color='#fde68a' />
+          <Ionicons name='trophy-outline' size={18} color='#fde68a' />
           <Text style={styles.statValue}>7,750</Text>
           <Text style={styles.statLabel}>XP</Text>
         </View>
 
         <View style={[styles.statCard, { backgroundColor: '#14532d' }]}>
-          <Ionicons name='earth' size={18} color='#bbf7d0' />
+          <Ionicons name='expand-outline' size={18} color='#bbf7d0' />
           <Text style={styles.statValue}>1.8</Text>
-          <Text style={styles.statLabel}>sq km</Text>
+          <Text style={styles.statLabel}>Territory</Text>
         </View>
 
         <View style={[styles.statCard, { backgroundColor: '#064e3b' }]}>
-          <Ionicons name='flame' size={18} color='#fde68a' />
+          <Ionicons name='flame-outline' size={18} color='#fde68a' />
           <Text style={styles.statValue}>4</Text>
-          <Text style={styles.statLabel}>day streak</Text>
+          <Text style={styles.statLabel}>Streak</Text>
         </View>
       </View>
 
       {/* achievements list */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Achievements</Text>
-
         <View style={styles.achList}>
-          <View style={styles.achItem}>
-            <Ionicons name='medal-outline' size={18} color='#111827' />
-            <Text style={styles.achText}>First Zone Captured</Text>
-          </View>
-
-          <View style={styles.achItem}>
-            <Ionicons name='bicycle' size={18} color='#111827' />
-            <Text style={styles.achText}>10 km in a day</Text>
-          </View>
-
-          <View style={styles.achItem}>
-            <Ionicons name='people-outline' size={18} color='#111827' />
-            <Text style={styles.achText}>Invite 3 friends</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* settings toggles */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-
-        <View style={styles.rowItem}>
-          <View style={styles.rowLeft}>
-            <Ionicons name='location-outline' size={20} color='#111827' />
-            <Text style={styles.rowText}>Share location with friends</Text>
-          </View>
-          <Switch
-            value={shareLocation}
-            onValueChange={setShareLocation}
-            trackColor={{ false: '#cbd5e1', true: '#86efac' }}
-            thumbColor={shareLocation ? '#22c55e' : '#f8fafc'}
-          />
-        </View>
-
-        <View style={styles.rowItem}>
-          <View style={styles.rowLeft}>
-            <Ionicons name='notifications-outline' size={20} color='#111827' />
-            <Text style={styles.rowText}>Push notifications</Text>
-          </View>
-          <Switch
-            value={notifications}
-            onValueChange={setNotifications}
-            trackColor={{ false: '#cbd5e1', true: '#86efac' }}
-            thumbColor={notifications ? '#22c55e' : '#f8fafc'}
-          />
+          {achievements.map((ach) => (
+            <View key={ach.title} style={styles.achItem}>
+              <View style={[styles.achIcon, ach.status === 'locked' && styles.achIconLocked]}>
+                <Ionicons
+                  name={ach.status === 'locked' ? 'lock-closed' : ach.icon}
+                  size={20}
+                  color={ach.status === 'unlocked' ? '#f59e0b' : '#9ca3af'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.achText, ach.status === 'locked' && styles.achTextLocked]}>
+                  {ach.title}
+                </Text>
+                {ach.status === 'progress' && (
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${ach.progress}%` }]} />
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -144,9 +162,6 @@ export default function ProfileScreen() {
           <Text style={styles.actionTextOutline}>Log out</Text>
         </Pressable>
       </View>
-
-      {/* tiny disclaimer for the demo */}
-      <Text style={styles.smallPrint}>Demo only — data isn’t saved yet.</Text>
     </ScrollView>
   )
 }
@@ -182,7 +197,7 @@ const styles = StyleSheet.create({
 
   editBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 999,
     backgroundColor: '#e5e7eb',
     flexDirection: 'row',
@@ -190,6 +205,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   editBtnText: { fontWeight: '800', color: '#111827' },
+  settingsBtn: {
+    padding: 8,
+    borderRadius: 999,
+    backgroundColor: '#e5e7eb',
+  },
 
   // stat pills
   statsRow: { flexDirection: 'row', gap: 10 },
@@ -202,7 +222,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statValue: { color: 'white', fontWeight: '900', fontSize: 16 },
-  statLabel: { color: 'white', opacity: 0.9, fontSize: 12 },
+  statLabel: { color: 'white', opacity: 0.9, fontSize: 12, fontWeight: '600' },
 
   // sections
   section: {
@@ -215,24 +235,37 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '900', marginBottom: 8, color: '#111827' },
+  sectionTitle: { fontSize: 16, fontWeight: '900', marginBottom: 12, color: '#111827' },
 
   // achievements list
-  achList: { gap: 8 },
-  achItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  achText: { color: '#111827', fontWeight: '600' },
-
-  // settings rows
-  rowItem: {
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e7eb',
-    flexDirection: 'row',
+  achList: { gap: 16 },
+  achItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  achIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: '#fffbeb',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rowText: { color: '#111827', fontWeight: '600' },
+  achIconLocked: {
+    backgroundColor: '#f1f5f9',
+  },
+  achText: { color: '#111827', fontWeight: '600', fontSize: 15 },
+  achTextLocked: {
+    color: '#9ca3af',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#e5e7eb',
+    marginTop: 4,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#22c55e',
+  },
 
   // action buttons
   actions: { gap: 10 },
@@ -248,6 +281,4 @@ const styles = StyleSheet.create({
   outline: { backgroundColor: 'white', borderWidth: 2, borderColor: '#111827' },
   actionTextPrimary: { color: 'white', fontWeight: '800' },
   actionTextOutline: { color: '#111827', fontWeight: '800' },
-
-  smallPrint: { textAlign: 'center', color: '#64748b', fontSize: 12, marginTop: 8 },
-})
+});

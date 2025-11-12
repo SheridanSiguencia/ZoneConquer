@@ -52,3 +52,6 @@ logs/
 
 # Build files (backend specific)
 build/
+
+# ignore the gemini file
+gemini.md

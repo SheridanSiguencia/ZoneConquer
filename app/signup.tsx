@@ -14,7 +14,7 @@ import {
     TextInput,
     View,
 } from 'react-native'
-import { authAPI } from '@/services/api';
+import { authAPI } from '../services/api';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('')
@@ -25,37 +25,27 @@ export default function SignUpScreen() {
 
   const canSubmit = name && email && pass && confirm && pass === confirm
 
-// In signup.tsx - update onCreate function
-const onCreate = async () => {
-  if (!canSubmit) return
-  setLoading(true)
+  const onCreate = async () => {
+    if (!canSubmit) return;
+    setLoading(true);
+    try {
+      console.log('🟡 Attempting registration via authAPI...');
+      const result = await authAPI.register({ username: name, email, password: pass });
   
-  try {
-    console.log('🟡 Attempting registration...');
-    
-    // FIX: Use environment variable instead of hardcoded localhost
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: name, email, password: pass })
-    });
-    
-    console.log('🟡 Response status:', response.status);
-    const result = await response.json();
-    console.log('🟡 Response data:', result);
-    
-    if (result.success) {
-      router.replace('/(tabs)');
-    } else {
-      alert(`Registration failed: ${result.error}`);
+      if (result.success) {
+        alert('Registration successful! Please log in.');
+        router.push('/login'); 
+      } else {
+        // This block is for safety, though authAPI.register should throw on failure
+        alert(`Registration failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.log('🔴 Registration error:', error);
+      alert(`Registration failed: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.log('🔴 Registration error:', error);
-    alert('Registration failed: ' + error.message);
-  } finally {
-    setLoading(false);
   }
-}
 
   return (
     <KeyboardAvoidingView
