@@ -50,26 +50,25 @@ router.post('/register', async (req, res) => {
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
-    // 🗄️ Insert into database
-    const result = await pool.query(
-      `INSERT INTO users (username, email, password_hash) 
-       VALUES ($1, $2, $3)
-       RETURNING user_id, username, email, created_at`,
-      [username, email, password_hash]
-    );
-
-    const newUser = result.rows[0];
-    console.log('New user registered:', newUser.username);
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully!',
-      user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email
-      }
-    });
+   
+// 🗄️ Insert into database
+const result = await pool.query(
+    `INSERT INTO users (username, email, password_hash) 
+     VALUES ($1, $2, $3)
+     RETURNING user_id, username, email, created_at`,
+    [username, email, password_hash]
+  );
+  
+  const newUser = result.rows[0];
+  console.log('New user registered:', newUser.username);
+  
+  await pool.query(
+    `INSERT INTO user_stats (user_id, territories_owned, current_streak, today_distance, weekly_distance, weekly_goal) 
+     VALUES ($1, 0, 0, 0, 0, 15)`,
+    [newUser.user_id]
+  );
+  
+  console.log('📊 User stats row created for user:', newUser.user_id);
 
   } catch (error) {
     console.error('Registration error:', error);

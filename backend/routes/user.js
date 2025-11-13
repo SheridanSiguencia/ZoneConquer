@@ -4,6 +4,15 @@ const pool = require('../config/database');
 
 router.get('/stats', async (req, res) => {
   try {
+    // 🎯 ADD THIS DEBUG CODE RIGHT HERE:
+    console.log('🔍 SESSION DEBUG:', {
+      session: req.session,
+      userId: req.session.user_id,
+      sessionID: req.sessionID,
+      cookies: req.headers.cookie,
+      headers: req.headers
+    });
+    
     const userId = req.session.user_id;
     
     if (!userId) {
