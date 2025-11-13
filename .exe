@@ -1,3 +1,0 @@
-DATABASE_URL=postgresql://neondb_owner:npg_iBoX3InZ1fwL@ep-restless-field-a4xmmbv1-pooler.us-east-1.aws.neon.tech/zoneconquer
-EXPO_PUBLIC_API_BASE=http://10.170.19.80:3000/api
-

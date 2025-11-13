@@ -2,10 +2,10 @@
 // simple profile screen for demo
 // shows a header card, some stats, small achievements list, a couple toggles, and actions
 
-import { Link, useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'
-import { router } from 'expo-router'
-import { useCallback, useState } from 'react'
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,8 +13,7 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage';
+} from 'react-native';
 
 const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';
 
@@ -138,7 +137,7 @@ export default function ProfileScreen() {
                 </Text>
                 {ach.status === 'progress' && (
                   <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${ach.progress}%` }]} />
+                    <View style={[styles.progressFill, { width: `${ach.progress ?? 0}%` }]} />
                   </View>
                 )}
               </View>
