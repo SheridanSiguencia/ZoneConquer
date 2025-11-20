@@ -174,4 +174,26 @@ router.post('/login', async (req, res) => {
     }
   });
 
-module.exports = router;
+// AUTH MIDDLEWARE 
+const auth = (req, res, next) => {
+  console.log('🔐 Auth check - session:', req.session?.user_id);
+  
+  if (req.session && req.session.user_id) {
+    // Add user info to request for easier access in routes
+    req.userId = req.session.user_id;
+    req.username = req.session.username;
+    return next();
+  }
+  
+  console.log('🔐 Auth failed - no user session');
+  return res.status(401).json({ 
+    success: false, 
+    error: 'Not authenticated. Please log in.' 
+  });
+};
+
+// ✅ Export both the router AND the auth middleware
+module.exports = {
+  router: router,
+  auth: auth
+};

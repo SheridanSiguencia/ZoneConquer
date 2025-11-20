@@ -3,12 +3,35 @@
 // loop detection → territory fill, a multi-route simulator,
 // and local persistence for claimed territory
 
+<<<<<<< Updated upstream
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Location from 'expo-location'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps'
+=======
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+
+import {
+  PathPoint,
+  WalkSession,
+  loadSessions,
+  saveSessions,
+} from '../data/rawPaths';
+>>>>>>> Stashed changes
 
 // tiny types
 type LatLng = { latitude: number; longitude: number }
@@ -58,6 +81,72 @@ export default function MapScreen() {
   // simulator state
   const [isSimulating, setIsSimulating] = useState(false)
 
+  // show users territories
+  const [allTerritories, setAllTerritories] = useState<{
+    territory_id: string;
+    coordinates: LatLng[][]; 
+    username: string; 
+    user_id: string;
+    area_sq_meters: number;
+    created_at: string;
+  }[]>([]);
+
+  const { user } = useAuth(); // Get user from your auth context
+
+
+  // Add this function to save territories to the database
+  const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
+    if (!user) {
+      console.log('User not logged in, skipping territory save');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/api/territories/save`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Important for sessions
+          body: JSON.stringify({
+            coordinates: [loop], // Wrap in array for polygon rings
+            area_sq_meters: areaM2,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Territory saved to database:', result.territory_id);
+        // Reload all territories to include the new one
+        loadAllTerritories();
+      } else {
+        console.warn('❌ Failed to save territory to database:', result.error);
+      }
+    } catch (error) {
+      console.warn('❌ Error saving territory to database:', error);
+    }
+  };
+
+  // Add function to load all territories from database
+  const loadAllTerritories = async () => {
+    try {
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/api/territories/all`
+      );
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Loaded territories from DB:', result.territories.length);
+        setAllTerritories(result.territories);
+      }
+    } catch (error) {
+      console.warn('❌ Error loading territories from database:', error);
+    }
+  };
   // refs
   const watchRef = useRef<Location.LocationSubscription | null>(null)
   const maskRef = useRef<{ dLat: number; dLon: number } | null>(null)
@@ -189,12 +278,30 @@ export default function MapScreen() {
         // try to close a loop
         const closure = findClosure(xyRef.current)
         if (closure) {
+<<<<<<< Updated upstream
           const loop = buildLoopLatLng(closure)
+=======
+          const loop = buildLoopLatLng(closure);
+          // 🎯 ADD DEBUG LOG HERE
+          console.log('🔄 Checking for loop closure...');
+          console.log('📏 Path points:', xyRef.current.length);
+          console.log('🎯 Closure result:', closure);
+>>>>>>> Stashed changes
           if (validateLoop(loop)) {
             setLoops(prevLoops => [...prevLoops, loop])
 
+<<<<<<< Updated upstream
             const areaM2 = polygonArea(loop.map(toXY))
             setTotalAreaM2(a => a + areaM2)
+=======
+            const areaM2 = polygonArea(loop.map(toXY));
+            setTotalAreaM2((a) => a + areaM2);
+
+            // save to neon
+            saveTerritoryToDB(loop, areaM2);
+            // record loop summary on the active session
+            addLoopSummary(areaM2);
+>>>>>>> Stashed changes
 
             // reset path starting at the closure point so you continue a fresh tail
             const tail = loop[0]
@@ -207,10 +314,31 @@ export default function MapScreen() {
         return [...prev, p]
       }
 
+<<<<<<< Updated upstream
       return prev
     })
   }
 
+=======
+      return prev;
+    });
+
+    if (accepted) {
+      appendRawPoint(p, t);
+    }
+  };
+  useEffect(() => {
+    if (user) {
+      console.log('🧪 Testing session...');
+      fetch(`${process.env.EXPO_PUBLIC_API_BASE}/api/territories/test-session`, {
+        credentials: 'include'
+      })
+      .then(r => r.json())
+      .then(result => console.log('🧪 Session test result:', result))
+      .catch(err => console.log('🧪 Session test error:', err));
+    }
+  }, [user]);
+>>>>>>> Stashed changes
   // start/stop gps tracking
   const startTracking = async () => {
     if (watchRef.current) return
@@ -446,7 +574,6 @@ export default function MapScreen() {
     <View style={{ flex: 1 }}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        // hide native dot when masked so we don’t leak real location
         showsUserLocation={!maskLocation}
         followsUserLocation={!maskLocation}
         initialRegion={region}
@@ -462,10 +589,24 @@ export default function MapScreen() {
         {/* breadcrumb line */}
         {path.length > 1 && <Polyline coordinates={path} strokeWidth={4} />}
 
-        {/* claimed polygons */}
+        {/* Show ONLY current user's territories from database */}
+        {allTerritories
+          .filter(territory => territory.user_id === user?.user_id)
+          .map((territory, i) => (
+            <Polygon
+              key={`my-db-${i}-${territory.territory_id}`}
+              coordinates={territory.coordinates[0]}
+              strokeWidth={3}
+              strokeColor="rgba(34,197,94,0.95)"
+              fillColor="rgba(34,197,94,0.28)"
+              zIndex={1000}
+            />
+          ))}
+        
+        {/* Your personal territories from current session (on top) */}
         {loops.map((ring, i) => (
           <Polygon
-            key={i}
+            key={`my-session-${i}`}
             coordinates={ring}
             strokeWidth={3}
             strokeColor='rgba(34,197,94,0.95)'
