@@ -18,77 +18,105 @@ import {
 } from 'react-native';
 import TermsModal from '../components/TermsModal';
 import { authAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
 
-  // after “login”, go straight to the app
-  const goToApp = () => router.replace('/(tabs)')
+  // ✅ ADD THIS MISSING HELPER FUNCTION
+  const termsKeyFor = (id: string) => `accepted_terms_${id}`;
 
-  const TERMS_KEY = 'termsAccepted:v2';
+  const onSignIn = async () => {
+    setLoading(true);
+    try {
+      const result = await authAPI.login({ email, password: pass });
+  
+      if (result.success) {
+        login({
+          user_id: result.user.id,
+          username: result.user.username,
+          email: result.user.email
+        });
+  
+        // After a successful login, gate this specific email behind terms
+        await maybeShowTermsFor(email);
+      } else {
+        alert(`Login failed: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        alert(`Login failed: ${error.message}`);
+      } else {
+        alert('Login failed: unexpected error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // after "login", go straight to the app
+  const goToApp = () => router.replace('/(tabs)');
+
   const [showTerms, setShowTerms] = useState(false);
   const [termsMode, setTermsMode] = useState<'gate' | 'review' | null>(null);
+  const [termsKey, setTermsKey] = useState<string | null>(null);
 
+  /**
+   * Show terms for a specific "user identity"
+   *   id = email for signed-in users
+   *   id = "guest" for guest flow
+   */
+  const maybeShowTermsFor = async (id: string) => {
+    // ✅ FIXED TYPO: termsKeyFor (not termsKeys)
+    const key = termsKeyFor(id);
+    setTermsKey(key); // remember which key to set on accept
 
-  const maybeShowTerms = async () => {
     try {
-      const seen = await SecureStore.getItemAsync(TERMS_KEY);
-      console.log('[Terms] getItemAsync ->', seen); // debug
+      const seen = await SecureStore.getItemAsync(key);
+      console.log('[Terms] getItemAsync ->', key, seen);
       if (seen === 'true') {
+        // already accepted on this device for this user
         return goToApp();
       }
     } catch (e) {
       console.warn('[Terms] SecureStore error', e);
       // If SecureStore errors, still show the modal so users can proceed
     }
+
+    // Not yet accepted for this user → show gate modal
     setTermsMode('gate');
     setShowTerms(true);
   };
-
+ 
   const onAcceptTerms = async () => {
     if (termsMode === 'gate') {
-      try {
-        await SecureStore.setItemAsync(TERMS_KEY, 'true');
-        console.log('[Terms] setItemAsync -> true');
-      } catch (e) {
-        console.warn('[Terms] setItemAsync error', e);
-        // even if saving fails, let them proceed
+      // gate mode: accept + mark for this user, then navigate
+      if (termsKey) {
+        try {
+          await SecureStore.setItemAsync(termsKey, 'true');
+          console.log('[Terms] setItemAsync -> true for', termsKey);
+        } catch (e) {
+          console.warn('[Terms] setItemAsync error', e);
+          // even if saving fails, let them proceed
+        }
       }
       setShowTerms(false);
-      goToApp();                 // only navigate in GATE mode
+      goToApp(); // only navigate in GATE mode
     } else {
       // review mode: just close; no flag, no navigation
       setShowTerms(false);
     }
   };
-    const onCloseTerms = () => {
+
+  const onCloseTerms = () => {
     // always just close; stay on sign-in page
     setShowTerms(false);
   };
 
-  const onSignIn = async () => {
-    setLoading(true)
-    try {
-      // Actually checks with your backend
-      const result = await authAPI.login({ email, password: pass })
-      
-      // ✅ Check if the response indicates success
-      if (result.success) {
-        goToApp()
-      } else {
-        // 🚨 Handle backend error (invalid credentials, etc.)
-        alert(`Login failed: ${result.error}`)
-      }
-    } catch (error) {
-      // 🚨 Handle network errors or API failures
-      alert(`Login failed: ${error.message}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // ... your JSX/return statement continues here
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -110,30 +138,30 @@ export default function LoginScreen() {
 
           {/* email input */}
           <View style={styles.inputWrap}>
-            <Ionicons name='mail-outline' size={18} color='#64748b' style={{ marginRight: 8 }} />
+            <Ionicons name="mail-outline" size={18} color="#64748b" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder='Email'
-              autoCapitalize='none'
-              keyboardType='email-address'
+              placeholder="Email"
+              autoCapitalize="none"
+              keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
-              placeholderTextColor='#94a3b8'
-              returnKeyType='next'
+              placeholderTextColor="#94a3b8"
+              returnKeyType="next"
             />
           </View>
 
           {/* password input */}
           <View style={styles.inputWrap}>
-            <Ionicons name='lock-closed-outline' size={18} color='#64748b' style={{ marginRight: 8 }} />
+            <Ionicons name="lock-closed-outline" size={18} color="#64748b" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder='Password'
+              placeholder="Password"
               secureTextEntry
               value={pass}
               onChangeText={setPass}
-              placeholderTextColor='#94a3b8'
-              returnKeyType='go'
+              placeholderTextColor="#94a3b8"
+              returnKeyType="go"
               onSubmitEditing={onSignIn}
             />
           </View>
@@ -146,38 +174,44 @@ export default function LoginScreen() {
           >
             {loading ? <ActivityIndicator /> : <Text style={styles.btnText}>Sign In</Text>}
           </Pressable>
+
           {/* create account — same style as sign in */}
-<Pressable
-  style={[styles.btn, { marginTop: 10 }]}
-  onPress={() => router.push('/signup')}
->
-  <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-  <Text style={styles.btnText}>Create account</Text>
-</Pressable>
+          <Pressable
+            style={[styles.btn, { marginTop: 10 }]}
+            onPress={() => router.push('/signup')}
+          >
+            <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.btnText}>Create account</Text>
+          </Pressable>
 
           {/* quick way in for the demo */}
-          <Pressable onPress={maybeShowTerms} style={{ marginTop: 8 }}>
-
+          <Pressable onPress={() => maybeShowTermsFor('guest')} style={{ marginTop: 8 }}>
             <Text style={styles.link}>Continue as guest</Text>
           </Pressable>
         </View>
-        <TermsModal
-  visible={showTerms}
-  onAccept={onAcceptTerms}
-  onClose={onCloseTerms}
-/>
 
+        <TermsModal
+          visible={showTerms}
+          onAccept={onAcceptTerms}
+          onClose={onCloseTerms}
+        />
 
         {/* tiny legal line */}
-       <Pressable onPress={() => { setTermsMode('review'); setShowTerms(true); }}>
-  <Text style={styles.footer}>
-    Review <Text style={styles.link}>Terms</Text> & <Text style={styles.link}>Privacy</Text>
-  </Text>
-</Pressable>
-
+        <Pressable
+          onPress={() => {
+            // review-only mode (no key written)
+            setTermsMode('review');
+            setShowTerms(true);
+          }}
+        >
+          <Text style={styles.footer}>
+            Review <Text style={styles.link}>Terms</Text> &{' '}
+            <Text style={styles.link}>Privacy</Text>
+          </Text>
+        </Pressable>
       </View>
     </KeyboardAvoidingView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -231,5 +265,4 @@ const styles = StyleSheet.create({
 
   link: { color: '#2563eb', fontWeight: '700' },
   footer: { textAlign: 'center', color: '#64748b', marginTop: 12, fontSize: 12 },
-})
-
+});

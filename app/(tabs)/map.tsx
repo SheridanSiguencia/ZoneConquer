@@ -3,14 +3,6 @@
 // loop detection → territory fill, a multi-route simulator,
 // and local persistence for claimed territory
 
-<<<<<<< Updated upstream
-import { Ionicons } from '@expo/vector-icons'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import * as Location from 'expo-location'
-import { useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import MapView, { Marker, Polygon, Polyline } from 'react-native-maps'
-=======
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,13 +17,6 @@ import {
 } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 
-import {
-  PathPoint,
-  WalkSession,
-  loadSessions,
-  saveSessions,
-} from '../data/rawPaths';
->>>>>>> Stashed changes
 
 // tiny types
 type LatLng = { latitude: number; longitude: number }
@@ -64,8 +49,16 @@ const haversineMeters = (a: LatLng, b: LatLng) => {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-export default function MapScreen() {
+export default function MapScreen() {    
+    // ... rest of your code
   // live position (masked if privacy is on)
+  // 🎯 CRITICAL DEBUG
+  useEffect(() => {
+    console.log('🔗 FULL API URL DEBUG:');
+    console.log('Base URL:', process.env.EXPO_PUBLIC_API_BASE);
+    console.log('Test URL:', `${process.env.EXPO_PUBLIC_API_BASE}/territories/test-session`);
+    console.log('Save URL:', `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`);
+  }, []);
   const [current, setCurrent] = useState<LatLng | null>(null)
   // breadcrumb line you’re drawing this session
   const [path, setPath] = useState<LatLng[]>([])
@@ -103,7 +96,7 @@ export default function MapScreen() {
 
     try {
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/api/territories/save`,
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
         {
           method: 'POST',
           headers: {
@@ -114,6 +107,7 @@ export default function MapScreen() {
             coordinates: [loop], // Wrap in array for polygon rings
             area_sq_meters: areaM2,
           }),
+
         }
       );
 
@@ -124,10 +118,18 @@ export default function MapScreen() {
         // Reload all territories to include the new one
         loadAllTerritories();
       } else {
-        console.warn('❌ Failed to save territory to database:', result.error);
+        console.warn('❌ Failed to save territory to database:', result.error
+        + " "+(JSON.stringify({
+          coordinates: [loop], // Wrap in array for polygon rings
+          area_sq_meters: areaM2,
+        })));
       }
     } catch (error) {
-      console.warn('❌ Error saving territory to database:', error);
+      console.warn('❌ Error saving territory to database:', error+ " "+(JSON.stringify({
+        coordinates: [loop], // Wrap in array for polygon rings
+        area_sq_meters: areaM2,
+      })));
+      
     }
   };
 
@@ -278,30 +280,21 @@ export default function MapScreen() {
         // try to close a loop
         const closure = findClosure(xyRef.current)
         if (closure) {
-<<<<<<< Updated upstream
-          const loop = buildLoopLatLng(closure)
-=======
           const loop = buildLoopLatLng(closure);
           // 🎯 ADD DEBUG LOG HERE
           console.log('🔄 Checking for loop closure...');
           console.log('📏 Path points:', xyRef.current.length);
           console.log('🎯 Closure result:', closure);
->>>>>>> Stashed changes
           if (validateLoop(loop)) {
             setLoops(prevLoops => [...prevLoops, loop])
 
-<<<<<<< Updated upstream
-            const areaM2 = polygonArea(loop.map(toXY))
-            setTotalAreaM2(a => a + areaM2)
-=======
             const areaM2 = polygonArea(loop.map(toXY));
             setTotalAreaM2((a) => a + areaM2);
 
             // save to neon
             saveTerritoryToDB(loop, areaM2);
             // record loop summary on the active session
-            addLoopSummary(areaM2);
->>>>>>> Stashed changes
+            // addLoopSummary(areaM2);
 
             // reset path starting at the closure point so you continue a fresh tail
             const tail = loop[0]
@@ -314,23 +307,13 @@ export default function MapScreen() {
         return [...prev, p]
       }
 
-<<<<<<< Updated upstream
-      return prev
-    })
-  }
-
-=======
       return prev;
     });
-
-    if (accepted) {
-      appendRawPoint(p, t);
-    }
   };
   useEffect(() => {
     if (user) {
       console.log('🧪 Testing session...');
-      fetch(`${process.env.EXPO_PUBLIC_API_BASE}/api/territories/test-session`, {
+      fetch(`${process.env.EXPO_PUBLIC_API_BASE}/territories/test-session`, {
         credentials: 'include'
       })
       .then(r => r.json())
@@ -338,7 +321,6 @@ export default function MapScreen() {
       .catch(err => console.log('🧪 Session test error:', err));
     }
   }, [user]);
->>>>>>> Stashed changes
   // start/stop gps tracking
   const startTracking = async () => {
     if (watchRef.current) return

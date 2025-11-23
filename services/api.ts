@@ -47,7 +47,7 @@ export const authAPI = {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',  // ← THIS IS REQUIRED for sessions!
+      credentials: 'include' as RequestCredentials,  // ← THIS IS REQUIRED for sessions!
       body: JSON.stringify(credentials),
     });
 

@@ -6,7 +6,6 @@ const cors = require('cors');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const territoryRoutes = require('./routes/territories'); 
-
 const app = express();
 const PORT = 3000;
 

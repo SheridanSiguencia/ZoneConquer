@@ -3,16 +3,27 @@ const router = express.Router();
 const db = require('../config/database'); // Using your existing database config
 const { auth } = require('./auth'); // Import auth from your existing auth routes
 
-// ✅ ADD TEST ROUTE HERE (outside of other routes)
+
+// In backend/routes/territories.js - add at the top:
+router.get('/test-connection', (req, res) => {
+    console.log('✅ Territories test route hit!');
+    res.json({ 
+      success: true, 
+      message: 'Territories route is working!',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+// ✅ MOVED HERE - top level test session route
 router.get('/test-session', auth, (req, res) => {
     console.log('🔐 Session test - user_id:', req.session.user_id);
     res.json({ 
-        success: true, 
-        userId: req.session.user_id,
-        session: req.session
+      success: true, 
+      userId: req.session.user_id,
+      session: req.session
     });
-});
-
+  });
+  
 // Save a conquered territory
 router.post('/save', auth, async (req, res) => {
   try {
