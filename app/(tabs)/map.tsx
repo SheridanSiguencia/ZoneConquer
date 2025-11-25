@@ -96,7 +96,7 @@ export default function MapScreen() {
 
     try {
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+        `${process.env.EXPO_PUBLIC_API_BASE}api/territories/save`,
         {
           method: 'POST',
           headers: {
