@@ -1,13 +1,14 @@
 // app/(tabs)/map.tsx
 // ride screen with distance (mi), bottom hud, privacy mask,
 // loop detection → territory fill, a multi-route simulator,
-// local persistence for claimed territory, and rawPaths recording
-// (TEST MODE: records raw paths even when mask is ON, including sim rides)
-
+// and local persistence for claimed territory
+import React from 'react'; 
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Alert,
   Pressable,
@@ -16,13 +17,9 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+import { userAPI } from '../../services/api';
 
-import {
-  PathPoint,
-  WalkSession,
-  loadSessions,
-  saveSessions,
-} from '../data/rawPaths';
+
 
 // tiny types
 type LatLng = { latitude: number; longitude: number };
@@ -57,9 +54,15 @@ const haversineMeters = (a: LatLng, b: LatLng) => {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 };
 
-export default function MapScreen() {
-  // live position (masked if privacy is on)
-  const [current, setCurrent] = useState<LatLng | null>(null);
+export default function MapScreen() {    
+  useEffect(() => {
+    console.log('🔗 FULL API URL DEBUG:');
+    console.log('Base URL:', process.env.EXPO_PUBLIC_API_BASE);
+    console.log('Test URL:', `${process.env.EXPO_PUBLIC_API_BASE}/territories/test-session`);
+    console.log('Save URL:', `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`);
+  }, []);
+
+  const [current, setCurrent] = useState<LatLng | null>(null)
   // breadcrumb line you’re drawing this session
   const [path, setPath] = useState<LatLng[]>([]);
   // distance accumulator (meters)
@@ -78,6 +81,125 @@ export default function MapScreen() {
   // simulator state
   const [isSimulating, setIsSimulating] = useState(false);
 
+  // show users territories
+  const [allTerritories, setAllTerritories] = useState<{
+    territory_id: string;
+    coordinates: LatLng[][]; 
+    username: string; 
+    user_id: string;
+    area_sq_meters: number;
+    created_at: string;
+  }[]>([]);
+
+  const { user } = useAuth(); // Get user from your auth context
+
+  const updateDistanceStats = async (distanceMeters: number) => {
+    if (!user || distanceMeters <= 0) return;
+    
+    try {
+      // 🆕 CONVERT METERS TO MILES before sending to backend
+      const distanceMiles = distanceMeters / 1609.344;
+      //console.log('🎯 DEBUG: Calling updateDistanceStats with:', distanceMiles, 'miles');
+      const result = await userAPI.updateDistance(distanceMiles);
+     //console.log('✅ DEBUG: Distance update successful:', result);
+    } catch (error) {
+      console.warn('❌ DEBUG: Failed to update distance stats:', error);
+    }
+  };
+  // Add this function to save territories to the database
+  const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
+    if (!user) {
+      console.log('User not logged in, skipping territory save');
+      return;
+    }
+  
+    try {
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Important for sessions
+          body: JSON.stringify({
+            coordinates: [loop], // Wrap in array for polygon rings
+            area_sq_meters: areaM2,
+          }),
+
+        }
+      );
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Territory saved to database:', result.territory_id);
+        // Reload all territories to include the new one
+        loadAllTerritories();
+      } else {
+        console.warn('❌ Failed to save territory to database:', result.error
+        + " "+(JSON.stringify({
+          coordinates: [loop], // Wrap in array for polygon rings
+          area_sq_meters: areaM2,
+        })));
+      }
+    } catch (error) {
+      console.warn('❌ Error saving territory to database:', error+ " "+(JSON.stringify({
+        coordinates: [loop], // Wrap in array for polygon rings
+        area_sq_meters: areaM2,
+      })));
+      
+    }
+  };
+
+  const loadAllTerritories = async () => {
+    console.log('🔄 loadAllTerritories CALLED');
+    
+    if (!user) {
+      console.log('❌ No user in loadAllTerritories');
+      return;
+    }
+    
+    try {
+      console.log('🌐 Fetching territories from API...');
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+  
+      //console.log('📡 API Response status:', response.status);
+      
+      const result = await response.json();
+      //console.log('📦 API Response data:', result);
+      
+      if (result.success) {
+        console.log('✅ Setting territories to state:', result.territories.length);
+        setAllTerritories(result.territories);
+      } else {
+        console.warn('❌ API error:', result.error);
+      }
+    } catch (error) {
+      console.warn('❌ Fetch error:', error);
+    }
+  };
+
+  useEffect(() => {
+    console.log('👤 USER CONTEXT CHANGED:', {
+      hasUser: !!user,
+      userId: user?.user_id,
+      territoriesCount: allTerritories.length
+    });
+  }, [user]);
+  
+  // Debug component re-renders
+  useEffect(() => {
+    console.log('🔄 MAP COMPONENT RE-RENDERED');
+  });
+  
   // refs
   const watchRef = useRef<Location.LocationSubscription | null>(null);
   const maskRef = useRef<{ dLat: number; dLon: number } | null>(
@@ -132,6 +254,7 @@ export default function MapScreen() {
   };
 
   // load saved territory once on mount
+  /*
   useEffect(() => {
     (async () => {
       try {
@@ -164,57 +287,60 @@ export default function MapScreen() {
       } catch (e: unknown) {
         console.warn('failed to load raw sessions', e);
       }
-    })();
-  }, []);
+    })()
+  }, [])
+  */
+ 
+// init / reinit on mask toggle (live session only)
+useEffect(() => {
+  stopTracking()
+  stopSim()
+  maskRef.current = null
+  originRef.current = null
+  xyRef.current = []
+  setPath([])
+  setDistanceMeters(0)
 
-  // init / reinit on mask toggle (live session only)
-  useEffect(() => {
-    stopTracking();
-    stopSim();
-    endActiveSession(); // close any open raw session
+  ;(async () => {
+    await Location.requestForegroundPermissionsAsync()
+    const loc = await Location.getCurrentPositionAsync({})
+    const raw = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
 
-    maskRef.current = null;
-    originRef.current = null;
-    xyRef.current = [];
-    setPath([]);
-    setDistanceMeters(0);
+    // pick a random ~6–10 km mask offset so geometry still feels local
+    if (maskLocation && !maskRef.current) {
+      const distanceM = 6000 + Math.random() * 4000
+      const angle = Math.random() * Math.PI * 2
+      const metersPerDegLat = 111111
+      const metersPerDegLon = 111111 * Math.cos((raw.latitude * Math.PI) / 180)
+      const dLat = (distanceM * Math.cos(angle)) / metersPerDegLat
+      const dLon = (distanceM * Math.sin(angle)) / metersPerDegLon
+      maskRef.current = { dLat, dLon }
+    }
 
-    (async () => {
-      await Location.requestForegroundPermissionsAsync();
-      const loc = await Location.getCurrentPositionAsync({});
-      const raw = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
+    const first = mask(raw)
+    setCurrent(first)
+    setPath([first])
+    xyRef.current = [toXY(first)]
+  })()
 
-      // pick a random ~6–10 km mask offset so geometry still feels local
-      if (maskLocation && !maskRef.current) {
-        const distanceM = 6000 + Math.random() * 4000;
-        const angle = Math.random() * Math.PI * 2;
-        const metersPerDegLat = 111111;
-        const metersPerDegLon =
-          111111 * Math.cos((raw.latitude * Math.PI) / 180);
-        const dLat =
-          (distanceM * Math.cos(angle)) / metersPerDegLat;
-        const dLon =
-          (distanceM * Math.sin(angle)) / metersPerDegLon;
-        maskRef.current = { dLat, dLon };
-      }
+  return () => {
+    stopTracking()
+    stopSim()
+  }
+}, [maskLocation])
 
-      const first = mask(raw);
-      setCurrent(first);
-      setPath([first]);
-      xyRef.current = [toXY(first)];
-    })();
-
+// 🆕 useFocusEffect as SEPARATE hook (same level as useEffect)
+useFocusEffect(
+  useCallback(() => {
+    if (user) {
+      console.log('🗺️ Map tab focused - loading territories for user:', user.user_id);
+      loadAllTerritories();
+    }
     return () => {
-      stopTracking();
-      stopSim();
-      endActiveSession();
+      console.log('🗺️ Map tab unfocused');
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maskLocation]);
-
+  }, [user])
+);
   // persist territory whenever loops / area change on real-location sessions
   useEffect(() => {
     (async () => {
@@ -385,18 +511,25 @@ export default function MapScreen() {
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
 
-        // try to close a loop
-        const closure = findClosure(xyRef.current);
+        updateDistanceStats(delta);
+        // Close a loop
+        const closure = findClosure(xyRef.current)
         if (closure) {
           const loop = buildLoopLatLng(closure);
+          // 🎯 ADD DEBUG LOG HERE
+          console.log('🔄 Checking for loop closure...');
+          console.log('📏 Path points:', xyRef.current.length);
+          console.log('🎯 Closure result:', closure);
           if (validateLoop(loop)) {
             setLoops((prevLoops) => [...prevLoops, loop]);
 
             const areaM2 = polygonArea(loop.map(toXY));
             setTotalAreaM2((a) => a + areaM2);
 
+            // save to neon
+            saveTerritoryToDB(loop, areaM2);
             // record loop summary on the active session
-            addLoopSummary(areaM2);
+            // addLoopSummary(areaM2);
 
             // reset path starting at the closure point so you continue a fresh tail
             const tail = loop[0];
@@ -413,11 +546,9 @@ export default function MapScreen() {
 
       return prev;
     });
-
-    if (accepted) {
-      appendRawPoint(p, t);
-    }
   };
+
+
 
   // start/stop gps tracking
   const startTracking = async () => {
@@ -763,12 +894,39 @@ export default function MapScreen() {
     const proj = { x: a.x + t * dx, y: a.y + t * dy };
     return Math.hypot(p.x - proj.x, p.y - proj.y);
   }
+  const testTerritoriesEndpoint = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('🧪 Testing /my-territories endpoint...');
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
+        {
+          credentials: 'include',
+        }
+      );
+      
+      //console.log('🧪 Response status:', response.status);
+      const result = await response.json();
+      //console.log('🧪 Full response:', JSON.stringify(result, null, 2));
+      
+    } catch (error) {
+      console.error('🧪 Test failed:', error);
+    }
+  };
+  
+  // Call loadAllTerritories to display player zones
+  useEffect(() => {
+    if (user) {
+      console.log('👤 User logged in:', user.user_id);
+      loadAllTerritories(); // ✅ KEEP - important for loading territories
+    }
+  }, [user]);
 
   return (
     <View style={{ flex: 1 }}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        // hide native dot when masked so we don’t leak real location
         showsUserLocation={!maskLocation}
         followsUserLocation={!maskLocation}
         initialRegion={region}
@@ -792,17 +950,28 @@ export default function MapScreen() {
           <Polyline coordinates={path} strokeWidth={4} />
         )}
 
-        {/* claimed polygons */}
-        {loops.map((ring, i) => (
-          <Polygon
-            key={i}
-            coordinates={ring}
-            strokeWidth={3}
-            strokeColor="rgba(34,197,94,0.95)"
-            fillColor="rgba(34,197,94,0.28)"
-            zIndex={1000}
-          />
-        ))}
+  
+        {/* TEMPORARY: Show ALL territories since user_id is undefined */}
+        {allTerritories.map((territory, i) => {
+          //console.log('🎯 RENDERING ALL TERRITORY:', territory.territory_id);
+          
+          const polygonCoordinates = territory.coordinates[0];
+          
+          if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
+            return null;
+          }
+          
+          return (
+            <Polygon
+              key={`db-territory-${territory.territory_id}-${i}`}
+              coordinates={polygonCoordinates}
+              strokeWidth={3}
+              strokeColor="rgba(34,197,94,0.95)"
+              fillColor="rgba(34,197,94,0.28)"
+              zIndex={1000}
+            />
+          );
+        })}
       </MapView>
 
       {/* bottom hud */}

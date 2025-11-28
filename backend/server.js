@@ -3,9 +3,9 @@ require('dotenv').config({ path: '../.env' });
 const express = require('express');
 const session = require('express-session');  
 const cors = require('cors');
-const authRoutes = require('./routes/auth');
+const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/user');
-
+const territoryRoutes = require('./routes/territories'); 
 const app = express();
 const PORT = 3000;
 
@@ -28,8 +28,9 @@ app.use(session({
 }));
 
 // ✅ THEN YOUR ROUTES (after session middleware)
-app.use('/api/auth', authRoutes); 
-app.use('/api/user', userRoutes);
+app.use('/api/auth', authRoutes);             // auth
+app.use('/api/user', userRoutes);             // user
+app.use('/api/territories', territoryRoutes); // map
 
 // Test route
 app.get('/api/test', (req, res) => {

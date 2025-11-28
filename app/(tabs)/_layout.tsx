@@ -50,6 +50,7 @@ export default function TabLayout() {
                 }}
               >
                 <Text style={{ color: 'white', fontWeight: '800' }}>Start Ride</Text>
+                {/* END home tab */}
               </Pressable>
             </Link>
           ),
@@ -79,6 +80,7 @@ export default function TabLayout() {
                 }}
               >
                 <Text style={{ color: '#e5e7eb', fontWeight: '800' }}>Leaderboard</Text>
+                {/* END map tab */}
               </Pressable>
             </Link>
           ),
@@ -108,6 +110,7 @@ export default function TabLayout() {
                 }}
               >
                 <Text style={{ color: '#e5e7eb', fontWeight: '800' }}>Ride</Text>
+                {/* END leaderboard tab */}
               </Pressable>
             </Link>
           ),

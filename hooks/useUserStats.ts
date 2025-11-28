@@ -1,6 +1,7 @@
-// hooks/useUserStats.ts - FIXED VERSION
-import { useState, useEffect } from 'react';
+// hooks/useUserStats.ts - ENHANCED VERSION
+import { useState, useEffect, useCallback } from 'react'; 
 import { userAPI, UserStats } from '../services/api';
+import { useFocusEffect } from '@react-navigation/native'; 
 
 export const useUserStats = () => {
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -16,15 +17,13 @@ export const useUserStats = () => {
       
       console.log('✅ Raw API response:', userStats);
       
-      // ✅ CONVERT STRINGS TO NUMBERS
       const safeStats: UserStats = {
         user_id: userStats.user_id || 'unknown',
-        //total_distance: Number(userStats.total_distance) || 0,
         territories_owned: Number(userStats.territories_owned) || 0,
         current_streak: Number(userStats.current_streak) || 0,
-        today_distance: Number(userStats.today_distance) || 0,     // ← Convert to number
-        weekly_distance: Number(userStats.weekly_distance) || 0,   // ← Convert to number
-        weekly_goal: Number(userStats.weekly_goal) || 15           // ← Convert to number
+        today_distance: Number(userStats.today_distance) || 0,
+        weekly_distance: Number(userStats.weekly_distance) || 0,
+        weekly_goal: Number(userStats.weekly_goal) || 15
       };
       
       console.log('✅ Processed stats (with numbers):', safeStats);
@@ -37,6 +36,13 @@ export const useUserStats = () => {
       setLoading(false);
     }
   };
+
+  // Auto refreshes when switched back to index screen 
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [])
+  );
 
   useEffect(() => {
     fetchStats();

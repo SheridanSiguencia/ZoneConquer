@@ -1,8 +1,8 @@
-// contexts/AuthContext.tsx - CREATE NEW FILE
+// contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface User {
-  id: string;
+  user_id: string;
   username: string;
   email: string;
 }

@@ -121,6 +121,7 @@ export default function HomeScreen() {
             </View>
           </View>
         </View> 
+        {/* close heroCard */}
   
         {/* weekly progress */}
         <View style={styles.sectionCard}>

@@ -47,7 +47,7 @@ export const authAPI = {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',  // ← THIS IS REQUIRED for sessions!
+      credentials: 'include' as RequestCredentials,  // ← THIS IS REQUIRED for sessions!
       body: JSON.stringify(credentials),
     });
 
@@ -55,7 +55,7 @@ export const authAPI = {
     
     console.log('🔍 LOGIN RESPONSE:', result); // ADD THIS FOR DEBUGGING
     
-    // 🛡️ SUPER EXPLICIT CHECK
+    // Check
     if (!result.success) {
       throw new Error(result.error || 'Login failed');
     }
@@ -63,7 +63,7 @@ export const authAPI = {
     return result;
   },
 };
-// ✅ ADD THE MISSING userAPI export!
+
 export const userAPI = {
   async getStats(): Promise<UserStats> {
     const response = await fetch(`${API_BASE}/user/stats`, {
@@ -80,5 +80,37 @@ export const userAPI = {
     
     const result = await response.json();
     return result;
+  }, 
+  async updateDistance(distance_meters: number): Promise<{ success: boolean; stats: UserStats }> {
+    const response = await fetch(`${API_BASE}/user/update-distance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ distance_meters }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update distance');
+    }
+
+    return await response.json();
+  },
+
+  async checkStreak(): Promise<{ success: boolean; stats: UserStats }> {
+    const response = await fetch(`${API_BASE}/user/check-streak`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check streak');
+    }
+    return await response.json();
   }
 };

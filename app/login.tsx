@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import TermsModal from '../components/TermsModal';
 import { authAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const TERMS_PREFIX = 'termsAccepted_v2';
 
@@ -29,8 +30,40 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
 
-  // after “login”, go straight to the app
+  // ✅ ADD THIS MISSING HELPER FUNCTION
+  const termsKeyFor = (id: string) => `accepted_terms_${id}`;
+
+  const onSignIn = async () => {
+    setLoading(true);
+    try {
+      const result = await authAPI.login({ email, password: pass });
+  
+      if (result.success) {
+        login({
+          user_id: result.user.id,
+          username: result.user.username,
+          email: result.user.email
+        });
+  
+        // After a successful login, gate this specific email behind terms
+        await maybeShowTermsFor(email);
+      } else {
+        alert(`Login failed: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        alert(`Login failed: ${error.message}`);
+      } else {
+        alert('Login failed: unexpected error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // after "login", go straight to the app
   const goToApp = () => router.replace('/(tabs)');
 
   const [showTerms, setShowTerms] = useState(false);
@@ -43,6 +76,7 @@ export default function LoginScreen() {
    *   id = "guest" for guest flow
    */
   const maybeShowTermsFor = async (id: string) => {
+   
     const key = termsKeyFor(id);
     setTermsKey(key); // remember which key to set on accept
 
@@ -62,7 +96,7 @@ export default function LoginScreen() {
     setTermsMode('gate');
     setShowTerms(true);
   };
-
+ 
   const onAcceptTerms = async () => {
     if (termsMode === 'gate') {
       // gate mode: accept + mark for this user, then navigate
@@ -88,28 +122,7 @@ export default function LoginScreen() {
     setShowTerms(false);
   };
 
-  const onSignIn = async () => {
-    setLoading(true);
-    try {
-      const result = await authAPI.login({ email, password: pass });
-
-      if (result.success) {
-        // After a successful login, gate this specific email behind terms
-        await maybeShowTermsFor(email);
-      } else {
-        alert(`Login failed: ${result.error}`);
-      }
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        alert(`Login failed: ${error.message}`);
-      } else {
-        alert('Login failed: unexpected error');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ... your JSX/return statement continues here
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
