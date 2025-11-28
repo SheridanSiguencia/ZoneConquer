@@ -20,6 +20,12 @@ import TermsModal from '../components/TermsModal';
 import { authAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
+const TERMS_PREFIX = 'termsAccepted_v2';
+
+// build a per-user key (email or "guest")
+const termsKeyFor = (id: string) =>
+  `${TERMS_PREFIX}_${id.toLowerCase()}`;
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
@@ -70,7 +76,7 @@ export default function LoginScreen() {
    *   id = "guest" for guest flow
    */
   const maybeShowTermsFor = async (id: string) => {
-    // ✅ FIXED TYPO: termsKeyFor (not termsKeys)
+   
     const key = termsKeyFor(id);
     setTermsKey(key); // remember which key to set on accept
 

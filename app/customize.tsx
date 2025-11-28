@@ -1,8 +1,8 @@
 // app/customize.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
-import { useState } from "react";
-import{
+import { useState, useEffect } from "react";
+import {
     Pressable,
     ScrollView,
     StyleSheet,
@@ -10,10 +10,40 @@ import{
     TextInput,
     View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';
 
 export default function CustomizeScreen() {
-    const [name,setName] = useState( 'Alex Rider');
+    const [name, setName] = useState('Alex Rider');
     const [handle, setHandle] = useState('@alex');
+
+    // Load profile on mount
+    useEffect(() => {
+        (async () => {
+            try {
+                const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
+                if (!raw) return;
+
+                const parsed = JSON.parse(raw) as { name?: string; handle?: string };
+                if (parsed.name) setName(parsed.name);
+                if (parsed.handle) setHandle(parsed.handle);
+            } catch (e) {
+                console.warn('failed to load user profile', e);
+            }
+        })();
+    }, []);
+
+    // Save profile and go back
+    const onSave = async () => {
+        try {
+            await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify({ name, handle }));
+        } catch (e) {
+            console.warn('failed to save user profile', e);
+        } finally {
+            router.back();
+        }
+    };
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
@@ -58,7 +88,7 @@ export default function CustomizeScreen() {
 
             <Pressable
             style={[styles.actionBtn, styles.primary]}
-            onPress={() => router.back()}
+            onPress={onSave}
             >
                 <Text style={styles.actionTextPrimary}>Save</Text>
             </Pressable>
@@ -137,7 +167,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#111827',
     },
-    actionBtn: {
+    actionBtn:{
         height: 48,
         borderRadius: 12,
         alignItems: 'center',
