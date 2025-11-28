@@ -1,4 +1,5 @@
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config(); // looks for .env in the same folder
+console.log('[server] DATABASE_URL in server.js =', process.env.DATABASE_URL);
 
 const express = require('express');
 const session = require('express-session');  
@@ -7,6 +8,12 @@ const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const territoryRoutes = require('./routes/territories'); 
 const app = express();
+//  tiny logger to see every request
+app.use((req, res, next) => {
+  console.log(`[req] ${req.method} ${req.url}`);
+  next();
+});
+
 const PORT = 3000;
 
 // ✅ MIDDLEWARE ORDER MATTERS!

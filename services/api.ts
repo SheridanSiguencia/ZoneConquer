@@ -1,7 +1,8 @@
 // services/api.ts - Your "API phone book"
 
 // Where your backend lives
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:3000/api';
+const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:3000/api';
 
 // Typescript definitions (what data looks like)
 export interface LoginData {
@@ -26,7 +27,11 @@ export interface UserStats {
 
 // The actual API functions
 export const authAPI = {
-  async register(userData: { username: string; email: string; password: string }) {
+  async register(userData: {
+    username: string;
+    email: string;
+    password: string;
+  }) {
     const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,28 +39,28 @@ export const authAPI = {
     });
 
     const result = await response.json();
-    
+
     if (!result.success) {
       throw new Error(result.error || 'Registration failed');
     }
 
     return result;
   },
+
   async login(credentials: LoginData) {
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include' as RequestCredentials,  // ← THIS IS REQUIRED for sessions!
+      credentials: 'include' as RequestCredentials, // required for sessions
       body: JSON.stringify(credentials),
     });
 
     const result = await response.json();
-    
-    console.log('🔍 LOGIN RESPONSE:', result); // ADD THIS FOR DEBUGGING
-    
-    // Check
+
+    console.log('🔍 LOGIN RESPONSE:', result);
+
     if (!result.success) {
       throw new Error(result.error || 'Login failed');
     }
@@ -73,22 +78,26 @@ export const userAPI = {
       },
       credentials: 'include',
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch user stats');
     }
-    
+
     const result = await response.json();
     return result;
-  }, 
-  async updateDistance(distance_meters: number): Promise<{ success: boolean; stats: UserStats }> {
+  },
+
+  // 🆕 expects distance in *miles* (we convert before calling this)
+  async updateDistance(
+    distanceMiles: number,
+  ): Promise<{ success: boolean; stats: UserStats }> {
     const response = await fetch(`${API_BASE}/user/update-distance`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ distance_meters }),
+      body: JSON.stringify({ distance_miles: distanceMiles }),
     });
 
     if (!response.ok) {
@@ -111,6 +120,7 @@ export const userAPI = {
     if (!response.ok) {
       throw new Error('Failed to check streak');
     }
+
     return await response.json();
-  }
+  },
 };
