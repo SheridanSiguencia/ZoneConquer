@@ -14,7 +14,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { userAPI } from '../../services/api';
 
 // ✅ rawPaths helpers now live in top-level data/
-import { PathPoint, WalkSession, saveSessions } from '../../data/rawPaths';
+import {
+  PathPoint,
+  WalkSession,
+  loadSessions,
+  saveSessions,
+} from '../../data/rawPaths';
 
 // tiny types
 type LatLng = { latitude: number; longitude: number };
@@ -226,6 +231,20 @@ export default function MapScreen() {
 
   const sessionsRef = useRef<WalkSession[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
+
+  // 🔁 NEW: load saved raw sessions on mount so XP accumulates correctly
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await loadSessions();
+        setSessions(stored);
+        sessionsRef.current = stored;
+        console.log('[map] loaded raw sessions:', stored.length);
+      } catch (e) {
+        console.warn('[map] failed to load raw sessions', e);
+      }
+    })();
+  }, []);
 
   // coordinate transforms (local meters ↔ latlng)
   const toXY = (p: LatLng): XY => {

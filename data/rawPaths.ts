@@ -26,7 +26,8 @@ export type WalkSession = {
   loops: LoopSummary[];     // all closed territories in this session
 };
 
-const STORAGE_KEY = 'zoneconquer_rawpaths_v1';
+// Use your teammate's key name for storage
+const RAW_PATHS_KEY = 'rawPaths_v1';
 
 // Make sure whatever we read from storage looks like a proper array of sessions
 function reviveSessions(raw: unknown): WalkSession[] {
@@ -51,10 +52,11 @@ function reviveSessions(raw: unknown): WalkSession[] {
               lng: Number(p.lng),
               t: Number(p.t),
             }))
-            .filter((p: PathPoint) =>
-              Number.isFinite(p.lat) &&
-              Number.isFinite(p.lng) &&
-              Number.isFinite(p.t),
+            .filter(
+              (p: PathPoint) =>
+                Number.isFinite(p.lat) &&
+                Number.isFinite(p.lng) &&
+                Number.isFinite(p.t),
             )
         : [];
 
@@ -65,10 +67,11 @@ function reviveSessions(raw: unknown): WalkSession[] {
               closedAt: Number(l.closedAt ?? 0),
               areaSqMeters: Number(l.areaSqMeters ?? 0),
             }))
-            .filter((l: LoopSummary) =>
-              l.id &&
-              Number.isFinite(l.closedAt) &&
-              Number.isFinite(l.areaSqMeters),
+            .filter(
+              (l: LoopSummary) =>
+                l.id &&
+                Number.isFinite(l.closedAt) &&
+                Number.isFinite(l.areaSqMeters),
             )
         : [];
 
@@ -82,7 +85,7 @@ function reviveSessions(raw: unknown): WalkSession[] {
 // Load all saved sessions from AsyncStorage
 export async function loadSessions(): Promise<WalkSession[]> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(RAW_PATHS_KEY);
     if (!raw) return [];
     const json = JSON.parse(raw);
     return reviveSessions(json);
@@ -93,10 +96,63 @@ export async function loadSessions(): Promise<WalkSession[]> {
 }
 
 // Save all sessions to AsyncStorage
-export async function saveSessions(sessions: WalkSession[]): Promise<void> {
+export async function saveSessions(all: WalkSession[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+    await AsyncStorage.setItem(RAW_PATHS_KEY, JSON.stringify(all));
   } catch (e) {
     console.warn('[rawPaths] failed to save sessions', e);
   }
+}
+
+// 👉 Call this when a walk finishes
+export async function appendSession(session: WalkSession): Promise<void> {
+  const all = await loadSessions();
+  all.push(session);
+  await saveSessions(all);
+}
+
+// 👉 For history / debugging / backend
+export async function getAllSessions(): Promise<WalkSession[]> {
+  return loadSessions();
+}
+
+export async function clearAllSessions(): Promise<void> {
+  await saveSessions([]);
+}
+
+// ---------- Backend JSON shape ----------
+
+export type BackendLoopPayload = {
+  sessionId: string;
+  loopId: string;
+  closedAt: string;
+  areaSqMeters: number;
+};
+
+export type BackendSessionPayload = {
+  sessionId: string;
+  startedAt: string;
+  endedAt: string | null;
+  numPoints: number;
+  numLoops: number;
+  loops: BackendLoopPayload[];
+};
+
+// Clean JSON your backend friend can POST / store
+export function toBackendPayload(
+  sessions: WalkSession[],
+): BackendSessionPayload[] {
+  return sessions.map((s) => ({
+    sessionId: s.id,
+    startedAt: new Date(s.startedAt).toISOString(),
+    endedAt: s.endedAt ? new Date(s.endedAt).toISOString() : null,
+    numPoints: s.points.length,
+    numLoops: s.loops.length,
+    loops: s.loops.map((loop) => ({
+      sessionId: s.id,
+      loopId: loop.id,
+      closedAt: new Date(loop.closedAt).toISOString(),
+      areaSqMeters: loop.areaSqMeters,
+    })),
+  }));
 }
