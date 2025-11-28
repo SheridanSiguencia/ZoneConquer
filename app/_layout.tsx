@@ -6,7 +6,7 @@ import { AuthProvider } from '../contexts/AuthContext'; // ← ADD THIS IMPORT
 
 export default function RootLayout() {
   return (
-    <AuthProvider> {/* ← WRAP EVERYTHING WITH AUTH PROVIDER */}
+    <AuthProvider> 
       <Stack screenOptions={{ headerShown: false }}>
         {/* auth screens */}
         <Stack.Screen name="login" />
