@@ -25,6 +25,14 @@ export interface UserStats {
   weekly_goal: number;
 }
 
+export interface Territory {
+  territory_id: string;
+  user_id: string;
+  coordinates: { latitude: number; longitude: number }[][];
+  area_sq_meters: number;
+  created_at: string;
+}
+
 // The actual API functions
 export const authAPI = {
   async register(userData: {
@@ -122,5 +130,24 @@ export const userAPI = {
     }
 
     return await response.json();
+  },
+};
+
+export const territoryAPI = {
+  async getHistory(): Promise<Territory[]> {
+    const response = await fetch(`${API_BASE}/territories/my-territories`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch territory history');
+    }
+
+    const result = await response.json();
+    return result.territories;
   },
 };
