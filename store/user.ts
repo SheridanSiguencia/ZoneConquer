@@ -2,23 +2,32 @@
 import create from 'zustand';
 import { userAPI, User, UserStats } from '../services/api';
 
+// Define the state shape for the user store
 interface UserState {
-  user: User | null;
-  stats: UserStats | null;
-  loading: boolean;
-  error: string | null;
-  login: (userData: User) => void;
-  logout: () => void;
-  fetchUserStats: () => void;
+  user: User | null; // The current user
+  stats: UserStats | null; // The user's stats
+  loading: boolean; // Whether the store is currently loading data
+  error: string | null; // Any errors that have occurred
+  login: (userData: User) => void; // Action to log the user in
+  logout: () => void; // Action to log the user out
+  fetchUserStats: () => void; // Action to fetch the user's stats
 }
 
+// Create the user store
 export const useUserStore = create<UserState>((set) => ({
+  // Initial state
   user: null,
   stats: null,
   loading: false,
   error: null,
+
+  // Action to log the user in
   login: (userData) => set({ user: userData }),
+
+  // Action to log the user out
   logout: () => set({ user: null, stats: null }),
+
+  // Action to fetch the user's stats
   fetchUserStats: async () => {
     set({ loading: true, error: null });
     try {

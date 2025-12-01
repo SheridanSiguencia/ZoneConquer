@@ -1,3 +1,4 @@
+// app/(tabs)/history.tsx
 import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,10 +8,12 @@ import { territoryAPI, Territory } from '../../services/api';
 import Colors from '../../constants/Colors';
 
 export default function HistoryScreen() {
+  // State for the trip history, loading state, and error state
   const [history, setHistory] = useState<Territory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch the trip history when the component mounts
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -26,8 +29,10 @@ export default function HistoryScreen() {
     fetchHistory();
   }, []);
 
+  // Render a single trip card
   const renderTrip = ({ item }: { item: Territory }) => (
     <View style={styles.tripCard}>
+      {/* Display a map with the claimed territory */}
       <MapView
         style={styles.map}
         initialRegion={{
@@ -43,6 +48,7 @@ export default function HistoryScreen() {
           fillColor="rgba(34, 197, 94, 0.2)"
         />
       </MapView>
+      {/* Display the trip details */}
       <View style={styles.tripDetails}>
         <Text style={styles.tripDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
         <Text style={styles.tripArea}>
@@ -52,6 +58,7 @@ export default function HistoryScreen() {
     </View>
   );
 
+  // Show a loading indicator while fetching the data
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -60,6 +67,7 @@ export default function HistoryScreen() {
     );
   }
 
+  // Show an error message if the data could not be fetched
   if (error) {
     return (
       <View style={styles.centered}>
@@ -68,6 +76,7 @@ export default function HistoryScreen() {
     );
   }
 
+  // Render the list of trips
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.dark.background }}>
       <FlatList
