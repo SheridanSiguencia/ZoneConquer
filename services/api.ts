@@ -16,6 +16,12 @@ export interface User {
   email: string;
 }
 
+export interface UserProfile {
+  username: string;
+  email: string;
+  created_at: string;
+}
+
 export interface UserStats {
   user_id: string;
   territories_owned: number;
@@ -130,6 +136,23 @@ export const userAPI = {
     }
 
     return await response.json();
+  },
+
+  async getProfile(): Promise<UserProfile> {
+    const response = await fetch(`${API_BASE}/user/profile`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch user profile');
+    }
+
+    const result = await response.json();
+    return result;
   },
 };
 

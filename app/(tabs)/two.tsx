@@ -64,30 +64,12 @@ const challenges: Challenge[] = [
 ];
 
 export default function ProfileScreen() {
-  const { user, logout, stats, loading, error, fetchUserStats } = useAuth();
-  const [name, setName] = useState(user?.username || 'Alex Rider');
-  const [handle, setHandle] = useState(`@${user?.username.toLowerCase()}` || '@alex');
+  const { user, logout, stats, profile, loading, error, fetchUserStats, fetchUserProfile } = useAuth();
 
   useEffect(() => {
     fetchUserStats();
+    fetchUserProfile();
   }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      (async () => {
-        try {
-          const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
-          if (!raw) return;
-
-          const parsed = JSON.parse(raw) as { name?: string; handle?: string };
-          if (parsed.name) setName(parsed.name);
-          if (parsed.handle) setHandle(parsed.handle);
-        } catch (e) {
-          console.warn('failed to load user profile', e);
-        }
-      })();
-    }, [])
-  );
 
   const onInvite = useCallback(async () => {
     try {
@@ -114,13 +96,15 @@ export default function ProfileScreen() {
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.headerCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+              <Text style={styles.avatarText}>{profile?.username.charAt(0).toUpperCase()}</Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{name}</Text>
-              <Text style={styles.handle}>{handle}</Text>
-              <Text style={styles.memberSince}>Member since 2024</Text>
+              <Text style={styles.name}>{profile?.username}</Text>
+              <Text style={styles.handle}>@{profile?.username.toLowerCase()}</Text>
+              <Text style={styles.memberSince}>
+                Member since {new Date(profile?.created_at || '').getFullYear()}
+              </Text>
             </View>
 
             <View style={{ flexDirection: 'row', gap: 8 }}>
