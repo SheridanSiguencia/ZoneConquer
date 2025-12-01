@@ -1,18 +1,22 @@
 // app/(tabs)/index.tsx
-import { Ionicons } from '@expo/vector-icons'
-import { Link } from 'expo-router'
-import { useCallback, useMemo } from 'react'
-import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator, RefreshControl } from 'react-native'
-import { useUserStats } from '../../hooks/useUserStats'
+import { Ionicons } from '@expo/vector-icons';
+import { Link } from 'expo-router';
+import { useCallback, useMemo, useEffect } from 'react';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator, RefreshControl } from 'react-native';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function HomeScreen() {
-  const { stats, loading, error, refetch } = useUserStats();
+  const { stats, loading, error, fetchUserStats } = useAuth();
+
+  useEffect(() => {
+    fetchUserStats();
+  }, []);
 
   const onInvite = useCallback(async () => {
     try {
-      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' })
+      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' });
     } catch {} // eslint-disable-line
-  }, [])
+  }, []);
 
   const weeklyPct = useMemo(() => {
     if (!stats || !stats.weekly_goal || stats.weekly_goal === 0) return 0;
@@ -20,7 +24,6 @@ export default function HomeScreen() {
     return Math.min(100, Math.round((weeklyDistance / stats.weekly_goal) * 100));
   }, [stats]);
 
-  // The loading state is now handled by RefreshControl, but we can keep this for the initial load.
   if (loading && !stats) {
     return (
       <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -37,7 +40,7 @@ export default function HomeScreen() {
         <Text style={{ color: '#ef4444', marginBottom: 12, textAlign: 'center' }}>
           {error || 'Failed to load stats'}
         </Text>
-        <Pressable onPress={refetch} style={styles.invite}>
+        <Pressable onPress={fetchUserStats} style={styles.invite}>
           <Ionicons name="reload" size={16} color="#111827" />
           <Text style={styles.inviteText}>Retry</Text>
         </Pressable>
@@ -56,7 +59,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.container} 
         showsVerticalScrollIndicator={false}
         refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#e5e7eb" />
+            <RefreshControl refreshing={loading} onRefresh={fetchUserStats} tintColor="#e5e7eb" />
         }
       >
         {/* header row */}
@@ -121,6 +124,7 @@ export default function HomeScreen() {
             </View>
           </View>
         </View> 
+        {/* close heroCard */}
   
         {/* weekly progress */}
         <View style={styles.sectionCard}>

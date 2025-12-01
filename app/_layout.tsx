@@ -1,17 +1,38 @@
 // app/_layout.tsx
 // root stack: login, signup, and your tabbed app
 
-import { Stack } from 'expo-router'
+import { useFonts, SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
+import { Stack } from 'expo-router';
+import { AuthProvider } from '../contexts/AuthContext';
+import { useEffect } from 'react';
+import { SplashScreen } from 'expo-router';
 
 export default function RootLayout() {
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      {/* auth screens */}
-      <Stack.Screen name="login" />
-      <Stack.Screen name="signup" />
+  const [fontsLoaded] = useFonts({
+    SpaceMono: SpaceMono_400Regular,
+  });
 
-      {/* main app (tabs group keeps its own headers) */}
-      <Stack.Screen name="(tabs)" />
-    </Stack>
-  )
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return <SplashScreen />;
+  }
+
+  return (
+    <AuthProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* auth screens */}
+        <Stack.Screen name="login" />
+        <Stack.Screen name="signup" />
+        <Stack.Screen name="forgot-password" />
+
+        {/* main app (tabs group keeps its own headers) */}
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </AuthProvider>
+  );
 }

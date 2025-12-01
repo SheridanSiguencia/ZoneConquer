@@ -1,55 +1,62 @@
 // app/(tabs)/_layout.tsx
 // tabs wrapper: defines the bottom tab bar and per-tab headers
 
-import { Ionicons } from '@expo/vector-icons'
-import { Link, Tabs } from 'expo-router'
-import { Platform, Pressable, Text } from 'react-native'
+import { Ionicons } from '@expo/vector-icons';
+import { Link, Tabs } from 'expo-router';
+import { Platform, Pressable, Text } from 'react-native';
+import { useColorScheme } from 'react-native';
+import Colors from '../../constants/Colors';
 
 export default function TabLayout() {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme || 'light'];
+
   return (
     <Tabs
       screenOptions={{
-        // show a top header on each tab
         headerShown: true,
         headerTitleAlign: 'center',
-        headerTitleStyle: { fontWeight: '800', fontSize: 22 },
+        headerTitleStyle: {
+          fontFamily: 'SpaceMono',
+          fontSize: 22,
+        },
         headerShadowVisible: false,
-
-        // tab bar look and feel
-        tabBarActiveTintColor: '#22c55e',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.gray[500],
         tabBarHideOnKeyboard: true,
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarLabelStyle: {
+          fontFamily: 'SpaceMono',
+          fontSize: 12,
+        },
         tabBarStyle: {
           height: Platform.OS === 'ios' ? 78 : 60,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? 20 : 10,
           borderTopWidth: 0,
-          backgroundColor: '#111827',
+          backgroundColor: colors.secondary,
         },
       }}
     >
       {/* home tab */}
       <Tabs.Screen
-        name='index'
+        name="index"
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
           ),
-          // quick action on the right: jump into the ride/map tab
           headerRight: () => (
-            <Link href='/(tabs)/map' asChild>
+            <Link href="/(tabs)/map" asChild>
               <Pressable
                 style={{
                   marginRight: 12,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                   borderRadius: 999,
-                  backgroundColor: '#22c55e',
+                  backgroundColor: colors.primary,
                 }}
               >
-                <Text style={{ color: 'white', fontWeight: '800' }}>Start Ride</Text>
+                <Text style={{ color: 'white', fontFamily: 'SpaceMono' }}>Start Ride</Text>
               </Pressable>
             </Link>
           ),
@@ -58,27 +65,26 @@ export default function TabLayout() {
 
       {/* ride / map tab */}
       <Tabs.Screen
-        name='map'
+        name="map"
         options={{
           title: 'Ride',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'bicycle' : 'bicycle-outline'} size={size} color={color} />
           ),
-          // handy link to leaderboard from here
           headerRight: () => (
-            <Link href='/(tabs)/leaderboard' asChild>
+            <Link href="/(tabs)/leaderboard" asChild>
               <Pressable
                 style={{
                   marginRight: 12,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                   borderRadius: 999,
-                  backgroundColor: '#111827',
+                  backgroundColor: colors.secondary,
                   borderWidth: 1,
-                  borderColor: '#e5e7eb',
+                  borderColor: colors.gray[200],
                 }}
               >
-                <Text style={{ color: '#e5e7eb', fontWeight: '800' }}>Leaderboard</Text>
+                <Text style={{ color: colors.gray[200], fontFamily: 'SpaceMono' }}>Leaderboard</Text>
               </Pressable>
             </Link>
           ),
@@ -87,36 +93,46 @@ export default function TabLayout() {
 
       {/* leaderboard tab */}
       <Tabs.Screen
-        name='leaderboard'
+        name="leaderboard"
         options={{
           title: 'Leaderboard',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'trophy' : 'trophy-outline'} size={size} color={color} />
           ),
-          // quick hop back to ride
           headerRight: () => (
-            <Link href='/(tabs)/map' asChild>
+            <Link href="/(tabs)/map" asChild>
               <Pressable
                 style={{
                   marginRight: 12,
                   paddingHorizontal: 10,
                   paddingVertical: 6,
                   borderRadius: 999,
-                  backgroundColor: '#111827',
+                  backgroundColor: colors.secondary,
                   borderWidth: 1,
-                  borderColor: '#e5e7eb',
+                  borderColor: colors.gray[200],
                 }}
               >
-                <Text style={{ color: '#e5e7eb', fontWeight: '800' }}>Ride</Text>
+                <Text style={{ color: colors.gray[200], fontFamily: 'SpaceMono' }}>Ride</Text>
               </Pressable>
             </Link>
           ),
         }}
       />
 
+      {/* history tab */}
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'History',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'time' : 'time-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+
       {/* profile tab (two.tsx) */}
       <Tabs.Screen
-        name='two'
+        name="two"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (
@@ -125,5 +141,5 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-  )
+  );
 }

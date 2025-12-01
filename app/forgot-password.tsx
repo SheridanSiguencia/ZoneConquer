@@ -1,5 +1,6 @@
+// app/forgot-password.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,29 +17,29 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { authAPI } from '../services/api';
 import Colors from '../constants/Colors';
 
-export default function SignUpScreen() {
-  const [name, setName] = useState('');
+export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
-  const [pass, setPass] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = name && email && pass && confirm && pass === confirm;
-
-  const onCreate = async () => {
-    if (!canSubmit) return;
+  const onRequestReset = async () => {
     setLoading(true);
+    setMessage(null);
+    setError(null);
     try {
-      const result = await authAPI.register({ username: name, email, password: pass });
+      // Call your backend API to request a password reset
+      // This is a placeholder, replace with actual API call
+      const result = await authAPI.requestPasswordReset(email);
 
       if (result.success) {
-        alert('Registration successful! Please log in.');
-        router.push('/login');
+        setMessage('Password reset link sent to your email!');
       } else {
-        alert(`Registration failed: ${result.error}`);
+        setError(result.error || 'Failed to send password reset link.');
       }
-    } catch (error: any) {
-      alert(`Registration failed: ${error.message}`);
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Forgot password error:', err);
     } finally {
       setLoading(false);
     }
@@ -56,24 +57,14 @@ export default function SignUpScreen() {
         >
           <View style={styles.container}>
             <View style={styles.hero}>
-              <Ionicons name="person-add-outline" size={48} color={Colors.light.primary} />
-              <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.subtitle}>Join ZoneConquer today.</Text>
+              <Ionicons name="lock-closed-outline" size={48} color={Colors.light.primary} />
+              <Text style={styles.title}>Forgot Password?</Text>
+              <Text style={styles.subtitle}>
+                Enter your email to receive a password reset link.
+              </Text>
             </View>
 
             <View style={styles.card}>
-              <View style={styles.inputWrap}>
-                <Ionicons name="person-outline" size={18} color={Colors.light.gray[500]} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Full Name"
-                  value={name}
-                  onChangeText={setName}
-                  placeholderTextColor={Colors.light.gray[400]}
-                  returnKeyType="next"
-                />
-              </View>
-
               <View style={styles.inputWrap}>
                 <Ionicons name="mail-outline" size={18} color={Colors.light.gray[500]} style={{ marginRight: 8 }} />
                 <TextInput
@@ -84,50 +75,29 @@ export default function SignUpScreen() {
                   value={email}
                   onChangeText={setEmail}
                   placeholderTextColor={Colors.light.gray[400]}
-                  returnKeyType="next"
-                />
-              </View>
-
-              <View style={styles.inputWrap}>
-                <Ionicons name="lock-closed-outline" size={18} color={Colors.light.gray[500]} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  secureTextEntry
-                  value={pass}
-                  onChangeText={setPass}
-                  placeholderTextColor={Colors.light.gray[400]}
-                  returnKeyType="next"
-                />
-              </View>
-
-              <View style={styles.inputWrap}>
-                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.light.gray[500]} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Confirm Password"
-                  secureTextEntry
-                  value={confirm}
-                  onChangeText={setConfirm}
-                  placeholderTextColor={Colors.light.gray[400]}
                   returnKeyType="go"
-                  onSubmitEditing={onCreate}
+                  onSubmitEditing={onRequestReset}
                 />
               </View>
 
               <Pressable
-                style={[styles.btn, (!canSubmit || loading) && styles.btnDisabled]}
-                onPress={onCreate}
-                disabled={!canSubmit || loading}
+                style={[styles.btn, (!email || loading) && styles.btnDisabled]}
+                onPress={onRequestReset}
+                disabled={!email || loading}
               >
-                {loading ? <ActivityIndicator color={Colors.dark.text} /> : <Text style={styles.btnText}>Create Account</Text>}
+                {loading ? (
+                  <ActivityIndicator color={Colors.dark.text} />
+                ) : (
+                  <Text style={styles.btnText}>Send Reset Link</Text>
+                )}
               </Pressable>
 
-              <Link href="/login" asChild>
-                <Pressable style={{ marginTop: 16, alignItems: 'center' }}>
-                  <Text style={styles.link}>Already have an account? Sign in</Text>
-                </Pressable>
-              </Link>
+              {message && <Text style={styles.message}>{message}</Text>}
+              {error && <Text style={styles.error}>{error}</Text>}
+
+              <Pressable onPress={() => router.back()} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={styles.link}>Back to Login</Text>
+              </Pressable>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -172,4 +142,16 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   btnText: { color: Colors.dark.text, fontWeight: '800', fontFamily: 'SpaceMono' },
   link: { color: Colors.light.primary, fontWeight: '700', fontFamily: 'SpaceMono' },
+  message: {
+    color: Colors.light.primary,
+    fontFamily: 'SpaceMono',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  error: {
+    color: 'red',
+    fontFamily: 'SpaceMono',
+    marginTop: 16,
+    textAlign: 'center',
+  },
 });
