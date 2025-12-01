@@ -31,6 +31,37 @@ export interface UserStats {
   weekly_goal: number;
 }
 
+// Interfaces for Gamification
+export interface Achievement {
+  achievement_id: number;
+  name: string;
+  description: string;
+  icon: string;
+  threshold: number;
+  metric: string;
+}
+
+export interface Challenge {
+  challenge_id: number;
+  name: string;
+  description: string;
+  icon: string;
+  goal_value: number;
+  metric: string;
+  start_date: string;
+  end_date: string | null;
+}
+
+export interface UserAchievement extends Achievement {
+  progress: number;
+  unlocked_at: string | null;
+}
+
+export interface UserChallenge extends Challenge {
+  current_value: number;
+  completed_at: string | null;
+}
+
 export interface Territory {
   territory_id: string;
   user_id: string;
@@ -151,6 +182,47 @@ export const userAPI = {
       throw new Error('Failed to fetch user profile');
     }
 
+    const result = await response.json();
+    return result;
+  },
+};
+
+export const gamificationAPI = {
+  async getAchievements(): Promise<Achievement[]> {
+    const response = await fetch(`${API_BASE}/gamification/achievements`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch achievements');
+    }
+    const result = await response.json();
+    return result.achievements;
+  },
+
+  async getChallenges(): Promise<Challenge[]> {
+    const response = await fetch(`${API_BASE}/gamification/challenges`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch challenges');
+    }
+    const result = await response.json();
+    return result.challenges;
+  },
+
+  async getUserProgress(): Promise<{ achievements: UserAchievement[]; challenges: UserChallenge[] }> {
+    const response = await fetch(`${API_BASE}/gamification/user-progress`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch user gamification progress');
+    }
     const result = await response.json();
     return result;
   },

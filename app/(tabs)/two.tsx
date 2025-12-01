@@ -64,11 +64,30 @@ const challenges: Challenge[] = [
 ];
 
 export default function ProfileScreen() {
-  const { user, logout, stats, profile, loading, error, fetchUserStats, fetchUserProfile } = useAuth();
+  const {
+    user,
+    logout,
+    stats,
+    profile,
+    loading,
+    error,
+    achievements,
+    challenges,
+    userAchievements,
+    userChallenges,
+    fetchUserStats,
+    fetchUserProfile,
+    fetchAchievements,
+    fetchChallenges,
+    fetchUserProgress,
+  } = useAuth();
 
   useEffect(() => {
     fetchUserStats();
     fetchUserProfile();
+    fetchAchievements();
+    fetchChallenges();
+    fetchUserProgress();
   }, []);
 
   const onInvite = useCallback(async () => {
@@ -149,47 +168,58 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Achievements</Text>
             <View style={styles.achList}>
-              {achievements.map((ach) => (
-                <View key={ach.title} style={styles.achItem}>
-                  <View style={[styles.achIcon, ach.status === 'locked' && styles.achIconLocked]}>
-                    <Ionicons
-                      name={ach.status === 'locked' ? 'lock-closed' : ach.icon}
-                      size={20}
-                      color={ach.status === 'unlocked' ? Colors.light.primary : Colors.light.gray[400]}
-                    />
+              {achievements.map((ach) => {
+                const userAch = userAchievements.find((ua) => ua.achievement_id === ach.achievement_id);
+                const status = userAch ? (userAch.unlocked_at ? 'unlocked' : 'progress') : 'locked';
+                const progress = userAch ? (userAch.progress / ach.threshold) * 100 : 0;
+
+                return (
+                  <View key={ach.name} style={styles.achItem}>
+                    <View style={[styles.achIcon, status === 'locked' && styles.achIconLocked]}>
+                      <Ionicons
+                        name={status === 'locked' ? 'lock-closed' : (ach.icon as any)}
+                        size={20}
+                        color={status === 'unlocked' ? Colors.light.primary : Colors.light.gray[400]}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.achText, status === 'locked' && styles.achTextLocked]}>
+                        {ach.name}
+                      </Text>
+                      {status === 'progress' && (
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.achText, ach.status === 'locked' && styles.achTextLocked]}>
-                      {ach.title}
-                    </Text>
-                    {ach.status === 'progress' && (
-                      <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${ach.progress ?? 0}%` }]} />
-                      </View>
-                    )}
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Challenges</Text>
             <View style={styles.achList}>
-              {challenges.map((challenge) => (
-                <View key={challenge.title} style={styles.achItem}>
-                  <View style={styles.achIcon}>
-                    <Ionicons name={challenge.icon} size={20} color={Colors.light.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.achText}>{challenge.title}</Text>
-                    <Text style={styles.challengeDescription}>{challenge.description}</Text>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${challenge.progress}%` }]} />
+              {challenges.map((challenge) => {
+                const userCh = userChallenges.find((uc) => uc.challenge_id === challenge.challenge_id);
+                const progress = userCh ? (userCh.current_value / challenge.goal_value) * 100 : 0;
+
+                return (
+                  <View key={challenge.name} style={styles.achItem}>
+                    <View style={styles.achIcon}>
+                      <Ionicons name={challenge.icon as any} size={20} color={Colors.light.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.achText}>{challenge.name}</Text>
+                      <Text style={styles.challengeDescription}>{challenge.description}</Text>
+                      <View style={styles.progressTrack}>
+                        <View style={[styles.progressFill, { width: `${progress}%` }]} />
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
 
