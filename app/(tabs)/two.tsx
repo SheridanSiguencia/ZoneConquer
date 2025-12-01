@@ -31,6 +31,36 @@ const achievements: Achievement[] = [
   { icon: 'walk', title: '5,000 Steps', status: 'progress', progress: 75 },
   { icon: 'people', title: 'Invite 3 Friends', status: 'locked' },
   { icon: 'calendar', title: '7-Day Streak', status: 'locked' },
+  { icon: 'map', title: 'Claim 10 Territories', status: 'locked' },
+  { icon: 'trophy', title: 'Reach 10,000 XP', status: 'locked' },
+];
+
+type Challenge = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  description: string;
+  progress: number;
+};
+
+const challenges: Challenge[] = [
+  {
+    icon: 'flame',
+    title: 'Weekly Distance',
+    description: 'Ride 50km in a week',
+    progress: 35,
+  },
+  {
+    icon: 'stopwatch',
+    title: 'Time Trial',
+    description: 'Beat your best time on a 5km route',
+    progress: 0,
+  },
+  {
+    icon: 'trending-up',
+    title: 'Elevation Gain',
+    description: 'Climb 500m in a single ride',
+    progress: 80,
+  },
 ];
 
 export default function ProfileScreen() {
@@ -159,6 +189,26 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Challenges</Text>
+            <View style={styles.achList}>
+              {challenges.map((challenge) => (
+                <View key={challenge.title} style={styles.achItem}>
+                  <View style={styles.achIcon}>
+                    <Ionicons name={challenge.icon} size={20} color={Colors.light.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.achText}>{challenge.title}</Text>
+                    <Text style={styles.challengeDescription}>{challenge.description}</Text>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${challenge.progress}%` }]} />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+
           <View style={styles.actions}>
             <Pressable style={[styles.actionBtn, styles.primary]} onPress={onInvite}>
               <Ionicons name="person-add" size={18} color={Colors.dark.text} />
@@ -259,6 +309,12 @@ const styles = StyleSheet.create({
   achText: { color: Colors.light.secondary, fontWeight: '600', fontSize: 15, fontFamily: 'SpaceMono' },
   achTextLocked: {
     color: Colors.light.gray[400],
+  },
+  challengeDescription: {
+    color: Colors.light.gray[500],
+    fontSize: 12,
+    fontFamily: 'SpaceMono',
+    marginTop: 4,
   },
   progressTrack: {
     height: 6,
