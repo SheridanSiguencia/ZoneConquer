@@ -7,7 +7,7 @@ ZoneConquer is a cross-platform mobile application that gamifies real-world cycl
 - **Real-time GPS Tracking:** Track your cycling routes in real-time.
 - **Territory Claiming:** Claim territory by closing loops on your cycling routes.
 - **Leaderboards:** Compete with other players and see who has claimed the most territory.
-- **Profile:** View your stats and achievements.
+- **Profile:** View your stats, achievements, and challenges.
 - **History:** View your previous trips and claimed territories.
 
 ## Tech Stack
