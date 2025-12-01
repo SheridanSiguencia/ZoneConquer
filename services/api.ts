@@ -195,6 +195,19 @@ export const userAPI = {
     const result = await response.json();
     return result;
   },
+
+  async updateProfile(
+    profileData: { username: string; email: string }
+  ): Promise<{ success: boolean; profile?: UserProfile; error?: string }> {
+    const response = await fetch(`${API_BASE}/user/update-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(profileData),
+    });
+    const result = await response.json();
+    return result;
+  },
 };
 
 export const gamificationAPI = {
