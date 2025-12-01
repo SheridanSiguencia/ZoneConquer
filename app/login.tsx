@@ -27,17 +27,15 @@ const termsKeyFor = (id: string) =>
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, loading, error } = useAuth();
 
   const onSignIn = async () => {
-    setLoading(true);
     try {
       const result = await authAPI.login({ email, password: pass });
 
       if (result.success) {
         login({
-          user_id: result.user.id,
+          id: result.user.id,
           username: result.user.username,
           email: result.user.email,
         });
@@ -52,8 +50,6 @@ export default function LoginScreen() {
       } else {
         alert('Login failed: unexpected error');
       }
-    } finally {
-      setLoading(false);
     }
   };
 

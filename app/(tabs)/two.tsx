@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,7 +14,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
-import { useUserStats } from '../../hooks/useUserStats';
 import Colors from '../../constants/Colors';
 
 const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';
@@ -35,10 +34,13 @@ const achievements: Achievement[] = [
 ];
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
-  const { stats, loading, error } = useUserStats();
+  const { user, logout, stats, loading, error, fetchUserStats } = useAuth();
   const [name, setName] = useState(user?.username || 'Alex Rider');
   const [handle, setHandle] = useState(`@${user?.username.toLowerCase()}` || '@alex');
+
+  useEffect(() => {
+    fetchUserStats();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

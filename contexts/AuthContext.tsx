@@ -1,42 +1,11 @@
 // contexts/AuthContext.tsx
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-
-interface User {
-  user_id: string;
-  username: string;
-  email: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  login: (userData: User) => void;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import React, { ReactNode } from 'react';
+import { useUserStore } from '../store/user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-
-  const login = (userData: User) => {
-    setUser(userData);
-  };
-
-  const logout = () => {
-    setUser(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <>{children}</>;
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return useUserStore();
 }

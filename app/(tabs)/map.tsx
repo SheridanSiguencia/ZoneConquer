@@ -97,7 +97,7 @@ export default function MapScreen() {
     created_at: string;
   }[]>([]);
 
-  const { user } = useAuth(); // Get user from your auth context
+  const { user, fetchUserStats } = useAuth(); // Get user from your auth context
 
   const updateDistanceStats = async (distanceMeters: number) => {
     if (!user || distanceMeters <= 0) return;
@@ -106,6 +106,9 @@ export default function MapScreen() {
       // 🆕 convert meters → miles before sending to backend
       const distanceMiles = distanceMeters / 1609.344;
       const result = await userAPI.updateDistance(distanceMiles);
+      if (result.success) {
+        fetchUserStats();
+      }
       // console.log('✅ DEBUG: Distance update successful:', result);
     } catch (error) {
       console.warn('❌ DEBUG: Failed to update distance stats:', error);
