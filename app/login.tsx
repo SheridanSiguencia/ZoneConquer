@@ -160,7 +160,7 @@ export default function LoginScreen() {
                 <Text style={styles.btnText}>Create account</Text>
               </Pressable>
 
-              <Pressable onPress={() => {}} style={{ marginTop: 16, alignItems: 'center' }}>
+              <Pressable onPress={() => router.push('/forgot-password')} style={{ marginTop: 16, alignItems: 'center' }}>
                 <Text style={styles.link}>Forgot Password?</Text>
               </Pressable>
             </View>
