@@ -1,21 +1,25 @@
 // app/(tabs)/map.tsx
-// ride screen with distance (mi), bottom hud, privacy mask,
-// loop detection → territory fill, a multi-route simulator,
-// local persistence for claimed territory, and rawPaths recording
-// (TEST MODE: records raw paths even when mask is ON, including sim rides)
+// Ride screen with distance, privacy mask, loop detection → Paper.io-style
+// growing territory, raw path recording, simulator routes, and arrow controls.
 
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import dissolve from '@turf/dissolve';
+import { featureCollection } from '@turf/helpers';
+import * as turf from '@turf/turf';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+import MapView, {
+  Polygon as MapPolygon,
+  Marker,
+  Polyline,
+} from 'react-native-maps';
 
 import {
   PathPoint,
@@ -24,9 +28,16 @@ import {
   saveSessions,
 } from '../data/rawPaths';
 
+import type {
+  Feature,
+  Polygon as GeoPolygon,
+  MultiPolygon,
+} from 'geojson';
+
 // tiny types
 type LatLng = { latitude: number; longitude: number };
 type XY = { x: number; y: number };
+type TerritoryFeature = Feature<GeoPolygon | MultiPolygon>;
 
 // thresholds for what counts as a “real” loop
 const MIN_PERIMETER_M = 80;
@@ -34,12 +45,23 @@ const MIN_AREA_M2 = 800;
 const MIN_RING_POINTS = 4;
 const CLOSE_EPS_M = 12;
 
-// local storage key for territory
+// local storage keys
 const LOOPS_KEY = 'zoneconquer_loops_v1';
+const CURRENT_PATH_KEY = 'zoneconquer_current_path_v1';
+
+type SavedRide = {
+  path: LatLng[];
+  distanceMeters: number;
+  maskOffset: { dLat: number; dLon: number } | null;
+};
 
 // allow turning privacy mask off via env if you want
 const DEFAULT_MASK =
-  (process.env.EXPO_PUBLIC_MASK_LOCATION ?? 'true').toString() === 'true';
+  (process.env.EXPO_PUBLIC_MASK_LOCATION ?? 'true').toString() ===
+  'true';
+
+// how far arrow buttons move per tap (meters in local XY)
+const ARROW_STEP_M = 20;
 
 // quick distance between two lat/lngs (meters)
 const haversineMeters = (a: LatLng, b: LatLng) => {
@@ -68,8 +90,11 @@ export default function MapScreen() {
   const [maskLocation, setMaskLocation] =
     useState<boolean>(DEFAULT_MASK);
   const [isTracking, setIsTracking] = useState(false);
-  // claimed polygons + total area (these are what we persist)
+  // raw loops for stats/debug only
   const [loops, setLoops] = useState<LatLng[][]>([]);
+  // merged Paper.io-style territory + area
+  const [territory, setTerritory] =
+    useState<TerritoryFeature | null>(null);
   const [totalAreaM2, setTotalAreaM2] = useState(0);
 
   // rawPaths sessions
@@ -79,10 +104,14 @@ export default function MapScreen() {
   const [isSimulating, setIsSimulating] = useState(false);
 
   // refs
-  const watchRef = useRef<Location.LocationSubscription | null>(null);
+  const watchRef = useRef<Location.LocationSubscription | null>(
+    null,
+  );
   const maskRef = useRef<{ dLat: number; dLon: number } | null>(
     null,
   );
+  // skip first mask effect run (on mount) so we don't clobber restored rides
+  const isFirstMaskEffectRef = useRef(true);
   const originRef = useRef<{
     lat: number;
     lon: number;
@@ -93,6 +122,36 @@ export default function MapScreen() {
 
   const sessionsRef = useRef<WalkSession[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
+  // Paper.io tail logic: track in/out-of-territory + the current "tail"
+  const lastInsideRef = useRef<boolean>(false);
+  const tailRef = useRef<LatLng[]>([]);
+
+  // Paper.io cut state (leaving & re-entering territory)
+  const cutStateRef = useRef<{
+    isOutside: boolean;
+    exitPoint: LatLng | null;
+    path: LatLng[];
+    lastInside: boolean | null;
+  }>({
+    isOutside: false,
+    exitPoint: null,
+    path: [],
+    lastInside: null,
+  });
+
+  const resetCutState = () => {
+    cutStateRef.current = {
+      isOutside: false,
+      exitPoint: null,
+      path: [],
+      lastInside: null,
+    };
+  };
+
+  // track if we restored an unfinished ride this mount
+  const hasRestoredCurrentPathRef = useRef(false);
+  // track if there's an unfinished ride we can resume
+  const [hasUnfinishedRide, setHasUnfinishedRide] = useState(false);
 
   // coordinate transforms (local meters ↔ latlng)
   const toXY = (p: LatLng): XY => {
@@ -131,6 +190,15 @@ export default function MapScreen() {
     };
   };
 
+  // hard reset breadcrumb after a successful capture/cut
+  const hardResetBreadcrumb = (anchor: LatLng) => {
+    originRef.current = null;
+    xyRef.current = [toXY(anchor)];
+    setPath([anchor]);
+  };
+
+  // ---------- load saved stuff on mount ----------
+
   // load saved territory once on mount
   useEffect(() => {
     (async () => {
@@ -141,14 +209,14 @@ export default function MapScreen() {
         const parsed = JSON.parse(raw) as {
           loops?: LatLng[][];
           totalAreaM2?: number;
+          territory?: TerritoryFeature;
         };
-        if (Array.isArray(parsed.loops)) {
-          setLoops(parsed.loops);
-        }
-        if (typeof parsed.totalAreaM2 === 'number') {
+
+        if (Array.isArray(parsed.loops)) setLoops(parsed.loops);
+        if (typeof parsed.totalAreaM2 === 'number')
           setTotalAreaM2(parsed.totalAreaM2);
-        }
-      } catch (e: unknown) {
+        if (parsed.territory) setTerritory(parsed.territory);
+      } catch (e) {
         console.warn('failed to load saved territory', e);
       }
     })();
@@ -161,102 +229,227 @@ export default function MapScreen() {
         const stored = await loadSessions();
         setSessions(stored);
         sessionsRef.current = stored;
-      } catch (e: unknown) {
+      } catch (e) {
         console.warn('failed to load raw sessions', e);
       }
     })();
   }, []);
 
-  // init / reinit on mask toggle (live session only)
+  // restore unfinished ride (path + distance + mask offset) on mount
   useEffect(() => {
-    stopTracking();
-    stopSim();
-    endActiveSession(); // close any open raw session
-
-    maskRef.current = null;
-    originRef.current = null;
-    xyRef.current = [];
-    setPath([]);
-    setDistanceMeters(0);
-
     (async () => {
-      await Location.requestForegroundPermissionsAsync();
-      const loc = await Location.getCurrentPositionAsync({});
-      const raw = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
+      try {
+        const raw = await AsyncStorage.getItem(CURRENT_PATH_KEY);
+        if (!raw) return;
+
+        const saved: SavedRide = JSON.parse(raw);
+        if (!saved.path || saved.path.length === 0) return;
+
+        if (maskLocation && saved.maskOffset) {
+          maskRef.current = saved.maskOffset;
+        }
+
+        originRef.current = null;
+        xyRef.current = [];
+        xyRef.current = saved.path.map((p) => toXY(p));
+
+        setPath(saved.path);
+        setCurrent(saved.path[saved.path.length - 1]);
+
+        if (typeof saved.distanceMeters === 'number') {
+          setDistanceMeters(saved.distanceMeters);
+        }
+
+        hasRestoredCurrentPathRef.current = true;
+        setHasUnfinishedRide(true);
+
+        console.log(
+          '[currentPath] restored',
+          saved.path.length,
+          'points',
+        );
+      } catch (e) {
+        console.warn('failed to load unfinished ride', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- react to mask toggle ----------
+
+  useEffect(() => {
+    // Skip the very first run on mount so we don't clobber any restored ride.
+    if (isFirstMaskEffectRef.current) {
+      isFirstMaskEffectRef.current = false;
+      return;
+    }
+
+    const init = async () => {
+      // stop everything and clear breadcrumb
+      stopTracking();
+      stopSim();
+      endActiveSession();
+      resetCutState();
+
+      originRef.current = null;
+      xyRef.current = [];
+      setPath([]);
+      setDistanceMeters(0);
+
+      const applyOffsetAndSetFirstPoint = (raw: LatLng) => {
+        if (maskLocation) {
+          // Teleport a few miles away (2–5 mi) in a random direction
+          const minMiles = 2;
+          const maxMiles = 5;
+          const distanceMiles =
+            minMiles + Math.random() * (maxMiles - minMiles);
+          const distanceM = distanceMiles * 1609.34;
+          const angle = Math.random() * Math.PI * 2;
+
+          const metersPerDegLat = 111111;
+          const metersPerDegLon =
+            111111 *
+            Math.cos((raw.latitude * Math.PI) / 180);
+
+          const dLat =
+            (distanceM * Math.cos(angle)) / metersPerDegLat;
+          const dLon =
+            (distanceM * Math.sin(angle)) / metersPerDegLon;
+
+          maskRef.current = { dLat, dLon };
+
+          console.log(
+            '[mask] new offset (mi):',
+            distanceMiles.toFixed(2),
+          );
+        } else {
+          // mask off → no offset, real location
+          maskRef.current = null;
+        }
+
+        const first = mask(raw);
+        setCurrent(first);
+        setPath([first]);
+        xyRef.current = [toXY(first)];
       };
 
-      // pick a random ~6–10 km mask offset so geometry still feels local
-      if (maskLocation && !maskRef.current) {
-        const distanceM = 6000 + Math.random() * 4000;
-        const angle = Math.random() * Math.PI * 2;
-        const metersPerDegLat = 111111;
-        const metersPerDegLon =
-          111111 * Math.cos((raw.latitude * Math.PI) / 180);
-        const dLat =
-          (distanceM * Math.cos(angle)) / metersPerDegLat;
-        const dLon =
-          (distanceM * Math.sin(angle)) / metersPerDegLon;
-        maskRef.current = { dLat, dLon };
-      }
+      try {
+        const { status } =
+          await Location.requestForegroundPermissionsAsync();
 
-      const first = mask(raw);
-      setCurrent(first);
-      setPath([first]);
-      xyRef.current = [toXY(first)];
-    })();
+        if (status !== 'granted') {
+          console.warn(
+            '[location] permission / getCurrentPosition failed, using fallback',
+          );
+          const fallback: LatLng = {
+            latitude: 40.7812,
+            longitude: -73.9665,
+          };
+          applyOffsetAndSetFirstPoint(fallback);
+          return;
+        }
+
+        const loc = await Location.getCurrentPositionAsync({});
+        const raw: LatLng = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+
+        applyOffsetAndSetFirstPoint(raw);
+      } catch (e) {
+        console.warn(
+          '[location] permission / getCurrentPosition failed, using fallback',
+          e,
+        );
+        const fallback: LatLng = {
+          latitude: 40.7812,
+          longitude: -73.9665,
+        };
+        applyOffsetAndSetFirstPoint(fallback);
+      }
+    };
+
+    init();
 
     return () => {
       stopTracking();
       stopSim();
       endActiveSession();
+      resetCutState();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maskLocation]);
 
-  // persist territory whenever loops / area change on real-location sessions
+  // ---------- persistence ----------
+
+  // persist merged territory when NOT masked
   useEffect(() => {
     (async () => {
       try {
         if (!maskLocation) {
-          if (loops.length || totalAreaM2 > 0) {
+          if (loops.length || totalAreaM2 > 0 || territory) {
             await AsyncStorage.setItem(
               LOOPS_KEY,
-              JSON.stringify({ loops, totalAreaM2 }),
+              JSON.stringify({ loops, totalAreaM2, territory }),
             );
           } else {
             await AsyncStorage.removeItem(LOOPS_KEY);
           }
         }
-        // when mask is on we treat everything as “demo only”
-      } catch (e: unknown) {
+      } catch (e) {
         console.warn('failed to save territory', e);
       }
     })();
-  }, [loops, totalAreaM2, maskLocation]);
+  }, [loops, totalAreaM2, territory, maskLocation]);
 
-  // rawPaths helpers
+  // persist unfinished ride breadcrumb
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!current || path.length === 0) {
+          await AsyncStorage.removeItem(CURRENT_PATH_KEY);
+          setHasUnfinishedRide(false);
+          return;
+        }
+
+        const maskOffset =
+          maskLocation && maskRef.current ? maskRef.current : null;
+
+        const toSave: SavedRide = {
+          path,
+          distanceMeters,
+          maskOffset,
+        };
+
+        await AsyncStorage.setItem(
+          CURRENT_PATH_KEY,
+          JSON.stringify(toSave),
+        );
+      } catch (e) {
+        console.warn('failed to save unfinished ride', e);
+      }
+    })();
+  }, [current, path, distanceMeters, maskLocation]);
+
+  // ---------- rawPaths helpers ----------
 
   const persistSessions = async (next: WalkSession[]) => {
     setSessions(next);
     sessionsRef.current = next;
     try {
       await saveSessions(next);
-    } catch (error: unknown) {
+    } catch (error) {
       console.warn('failed to save raw sessions', error);
     }
   };
 
-  // TEST MODE: allow sessions even when maskLocation is true
   const ensureSessionStarted = () => {
-    if (activeSessionIdRef.current) return; // already have an active session
+    if (activeSessionIdRef.current) return;
 
     const now = Date.now();
     const points: PathPoint[] = [];
 
     if (current) {
-      // NOTE: when mask is ON, `current` is masked — OK for testing
       points.push({
         lat: current.latitude,
         lng: current.longitude,
@@ -277,10 +470,8 @@ export default function MapScreen() {
     persistSessions(next);
   };
 
-  // TEST MODE: record points even when maskLocation is true
   const appendRawPoint = (p: LatLng, t: number) => {
     if (!activeSessionIdRef.current) return;
-
     const id = activeSessionIdRef.current;
     const prev = sessionsRef.current;
 
@@ -299,7 +490,6 @@ export default function MapScreen() {
     persistSessions(next);
   };
 
-  // TEST MODE: record loop summaries even when maskLocation is true
   const addLoopSummary = (areaSqMeters: number) => {
     if (!activeSessionIdRef.current) return;
 
@@ -353,17 +543,418 @@ export default function MapScreen() {
       'loops:',
       numLoops,
     );
-
-    Alert.alert(
-      'Raw paths saved',
-      `Session saved with ${numPoints} points and ${numLoops} loops.`,
-    );
   };
 
-  // handle a newly observed point
+  // ---------- merge loops into territory (Paper.io blob) ----------
+
+  // helper: extract plain Polygon geometries from the current territory
+  function extractPolygons(
+    t: TerritoryFeature | null,
+  ): GeoPolygon[] {
+    if (!t || !t.geometry) return [];
+
+    const g = t.geometry;
+
+    if (g.type === 'Polygon') {
+      return [g];
+    }
+
+    if (g.type === 'MultiPolygon') {
+      return g.coordinates.map(
+        (coords) =>
+          ({
+
+            type: 'Polygon',
+            coordinates: coords,
+          } as GeoPolygon),
+      );
+    }
+
+    return [];
+  }
+
+  function mergeLoopIntoTerritory(loop: LatLng[]) {
+    if (loop.length < 3) return;
+
+    // LatLng[] → GeoJSON ring [ [lng, lat], ... ]
+    const ring: [number, number][] = loop.map((p) => [
+      p.longitude,
+      p.latitude,
+    ]);
+    if (!ring.length) return;
+
+    // ensure closed ring
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      ring.push([...first] as [number, number]);
+    }
+
+    const loopPoly = turf.polygon([ring]) as TerritoryFeature;
+    const loopArea = turf.area(loopPoly);
+
+    if (loopArea <= 0) {
+      console.warn('[territory] new loop has zero area, skipping');
+      return;
+    }
+
+    // 🔹 No existing territory → this is the first island
+    const existingPolys = extractPolygons(territory);
+    if (existingPolys.length === 0 || totalAreaM2 <= 0) {
+      console.log(
+        '[territory] setting FIRST loop, area m2 =',
+        loopArea,
+      );
+      setTerritory(loopPoly);
+      setTotalAreaM2(loopArea);
+      return;
+    }
+
+    // 🔹 Build an array of polygon features = existing + new loop
+    const polyFeatures: TerritoryFeature[] = [
+      ...existingPolys.map((p) =>
+        turf.polygon(p.coordinates) as TerritoryFeature,
+      ),
+      loopPoly,
+    ];
+
+    let acc: TerritoryFeature | null = null;
+
+    try {
+      const fc = featureCollection(
+        polyFeatures as any,
+      ) as any; // FeatureCollection<Polygon>
+      const dissolved = dissolve(fc as any) as any;
+
+      if (
+        dissolved &&
+        dissolved.features &&
+        dissolved.features.length > 0
+      ) {
+        acc = dissolved.features[0] as TerritoryFeature;
+      } else {
+        console.warn(
+          '[territory] dissolve returned no features, keeping previous territory',
+        );
+        return;
+      }
+    } catch (err) {
+      console.warn(
+        '[territory] dissolve failed, keeping previous territory',
+        err,
+      );
+      return;
+    }
+
+    if (!acc) return;
+
+    const mergedArea = turf.area(acc as any);
+
+    // safety: never let area shrink due to a bad dissolve
+    if (mergedArea + 1 < totalAreaM2) {
+      console.warn(
+        '[territory] merged area smaller than existing, ignoring this loop',
+        { prev: totalAreaM2, merged: mergedArea },
+      );
+      return;
+    }
+
+    console.log('[territory] merged via dissolve, area =', mergedArea);
+
+    console.log(
+      '[territory-debug] MERGED GEOM',
+      acc.geometry?.type,
+      acc.geometry?.type === 'Polygon'
+        ? (acc.geometry.coordinates[0] || [])
+            .slice(0, 10)
+            .map(([lng, lat]) => ({
+
+              lat: Number(lat.toFixed(6)),
+              lon: Number(lng.toFixed(6)),
+            }))
+        : acc.geometry?.type === 'MultiPolygon'
+        ? 'MultiPolygon with ' +
+          acc.geometry.coordinates.length +
+          ' parts'
+        : null,
+    );
+
+    setTerritory(acc);
+    setTotalAreaM2(mergedArea);
+  }
+
+  // ---------- Paper.io cut logic (use existing territory edge as a side) ----------
+
+  function processPaperCut(prev: LatLng, curr: LatLng) {
+    if (!territory || !territory.geometry) {
+      resetCutState();
+      return;
+    }
+
+    const polys = extractPolygons(territory);
+    if (!polys.length) return;
+    const poly = polys[0]; // use primary polygon
+
+    const ptPrev = turf.point([prev.longitude, prev.latitude]);
+    const ptCurr = turf.point([curr.longitude, curr.latitude]);
+
+    const insidePrev = turf.booleanPointInPolygon(
+      ptPrev as any,
+      poly as any,
+    );
+    const insideNow = turf.booleanPointInPolygon(
+      ptCurr as any,
+      poly as any,
+    );
+
+    const seg = turf.lineString([
+      [prev.longitude, prev.latitude],
+      [curr.longitude, curr.latitude],
+    ]);
+
+    const inter = turf.lineIntersect(seg as any, poly as any) as any;
+    let intersectionLL: LatLng | null = null;
+    if (inter && inter.features && inter.features.length > 0) {
+      const g = inter.features[0].geometry;
+      if (g && g.type === 'Point') {
+        const [lng, lat] = g.coordinates;
+        intersectionLL = { latitude: lat, longitude: lng };
+      }
+    }
+
+    const state = cutStateRef.current;
+
+    // leaving territory → start cut
+    if (!state.isOutside && insidePrev && !insideNow) {
+      const exitPoint = intersectionLL ?? prev;
+      state.isOutside = true;
+      state.exitPoint = exitPoint;
+      state.path = [exitPoint, curr];
+      state.lastInside = insideNow;
+
+      console.log('[cut] EXIT at', exitPoint);
+      return;
+    }
+
+    // currently outside: accumulate path & look for re-entry
+    if (state.isOutside) {
+      state.path.push(curr);
+
+      if (!insidePrev && insideNow && state.exitPoint) {
+        const entryPoint = intersectionLL ?? curr;
+        // ensure last point is the entry point
+        state.path[state.path.length - 1] = entryPoint;
+
+        console.log('[cut] ENTER at', entryPoint);
+
+        const cutLoop = buildCutLoop(
+          state.exitPoint,
+          entryPoint,
+          state.path,
+          poly,
+        );
+
+        if (cutLoop && cutLoop.length >= MIN_RING_POINTS) {
+          const xy = cutLoop.map((ll) => toXY(ll));
+          const area = polygonArea(xy);
+
+          console.log('[cut-loop]', {
+            points: cutLoop.length,
+            area,
+            hasTerritory: !!territory,
+          });
+
+          if (area >= MIN_AREA_M2) {
+            addLoopSummary(area);
+            mergeLoopIntoTerritory(cutLoop);
+            setLoops((prev) => [...prev, cutLoop]);
+
+            // 🧹 trim breadcrumbs after a successful cut
+            hardResetBreadcrumb(entryPoint);
+          }
+        }
+
+        resetCutState();
+      } else {
+        state.lastInside = insideNow;
+      }
+
+      return;
+    }
+
+    // not outside, just keep track
+    cutStateRef.current.lastInside = insideNow;
+  }
+
+  function buildCutLoop(
+    exitPoint: LatLng,
+    entryPoint: LatLng,
+    cutPath: LatLng[],
+    poly: GeoPolygon,
+  ): LatLng[] | null {
+    const ring = poly.coordinates[0];
+    if (!ring || ring.length < 4) return null;
+
+    const ringLL: LatLng[] = ring.map(([lng, lat]) => ({
+      latitude: lat,
+      longitude: lng,
+    }));
+
+    const idxExit = nearestRingIndex(ringLL, exitPoint);
+    const idxEntry = nearestRingIndex(ringLL, entryPoint);
+    if (idxExit === -1 || idxEntry === -1) return null;
+
+    const n = ringLL.length;
+
+    // entry → exit going forward along ring
+    const forward: LatLng[] = [];
+    let i = idxEntry;
+    while (true) {
+      forward.push(ringLL[i]);
+      if (i === idxExit) break;
+      i = (i + 1) % n;
+    }
+
+    // entry → exit going backward along ring
+    const backward: LatLng[] = [];
+    i = idxEntry;
+    while (true) {
+      backward.push(ringLL[i]);
+      if (i === idxExit) break;
+      i = (i - 1 + n) % n;
+    }
+
+    const boundary =
+      forward.length <= backward.length ? forward : backward;
+
+    // ensure cutPath starts at exit and ends at entry
+    const path: LatLng[] = [...cutPath];
+    if (!almostEqualLatLng(path[0], exitPoint)) {
+      path.unshift(exitPoint);
+    }
+    if (!almostEqualLatLng(path[path.length - 1], entryPoint)) {
+      path.push(entryPoint);
+    }
+
+    const loop: LatLng[] = [];
+
+    // exit → entry via outside path
+    for (let k = 0; k < path.length; k++) {
+      loop.push(path[k]);
+    }
+
+    // entry → exit along territory boundary (skip first, which ≈ entry)
+    for (let k = 1; k < boundary.length; k++) {
+      loop.push(boundary[k]);
+    }
+
+    // close ring
+    if (!almostEqualLatLng(loop[0], loop[loop.length - 1])) {
+      loop.push(loop[0]);
+    }
+
+    return loop;
+  }
+
+  function nearestRingIndex(ring: LatLng[], target: LatLng): number {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < ring.length; i++) {
+      const dLat = ring[i].latitude - target.latitude;
+      const dLon = ring[i].longitude - target.longitude;
+      const d = dLat * dLat + dLon * dLon;
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  function almostEqualLatLng(a: LatLng, b: LatLng, eps = 1e-6) {
+    return (
+      Math.abs(a.latitude - b.latitude) < eps &&
+      Math.abs(a.longitude - b.longitude) < eps
+    );
+  }
+
+  // ---------- Paper.io-style tail → territory merge ----------
+
+  const applyPaperIoTailLogic = (p: LatLng) => {
+    if (!territory) {
+      // no territory yet → nothing to do
+      lastInsideRef.current = false;
+      tailRef.current = [];
+      return;
+    }
+
+    // Is this point inside the current territory?
+    const pt = turf.point([p.longitude, p.latitude]);
+    const inside = turf.booleanPointInPolygon(pt, territory as any);
+    const wasInside = lastInsideRef.current;
+
+    console.log('[paperio-tail-state]', {
+      lat: p.latitude.toFixed(6),
+      lon: p.longitude.toFixed(6),
+      wasInside,
+      inside,
+    });
+
+    // 1) Leaving territory → start a new tail
+    if (wasInside && !inside) {
+      tailRef.current = [p];
+    }
+    // 2) Still outside → grow tail
+    else if (!wasInside && !inside) {
+      tailRef.current.push(p);
+    }
+    // 3) Re-entering territory → close the tail and merge
+    else if (!wasInside && inside) {
+      console.log('[paperio] re-enter territory, closing tail');
+
+      if (tailRef.current.length >= 3) {
+        const rawLoop = [...tailRef.current];
+
+        // 🔒 Close the loop by repeating the first point at the end
+        const loop = almostEqualLatLng(
+          rawLoop[0],
+          rawLoop[rawLoop.length - 1],
+        )
+          ? rawLoop
+          : [...rawLoop, rawLoop[0]];
+
+        // Re-use the same validation as self-intersection loops
+        if (validateLoop(loop)) {
+          const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
+          addLoopSummary(areaM2);
+
+          console.log('[paperio-loop]', {
+            points: loop.length,
+            area: areaM2,
+          });
+
+          mergeLoopIntoTerritory(loop);
+          setLoops((prev) => [...prev, loop]);
+
+          // 🧹 clear old trails after a capture, keep only current point
+          hardResetBreadcrumb(p);
+        }
+      }
+
+      // Tail is consumed once we’ve merged (or decided not to)
+      tailRef.current = [];
+    }
+
+    // Update state for the next step
+    lastInsideRef.current = inside;
+  };
+
+  // ---------- handle a newly observed point ----------
+
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
     const t = Date.now();
     let accepted = false;
+    const prevForCut = current;
 
     setCurrent(p);
     setPath((prev) => {
@@ -385,25 +976,47 @@ export default function MapScreen() {
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
 
-        // try to close a loop
+        // try to close a self-loop (path-only)
         const closure = findClosure(xyRef.current);
         if (closure) {
           const loop = buildLoopLatLng(closure);
+
+          console.log('[loop-debug] CLOSURE', {
+            type: closure.type,
+            startIdx: closure.startIdx,
+            endIdx: closure.endIdx,
+            atXY: {
+              x: Number(closure.at.x.toFixed(2)),
+              y: Number(closure.at.y.toFixed(2)),
+            },
+            xyLength: xyRef.current.length,
+          });
+
+          console.log(
+            '[loop-debug] LOOP LATLNG',
+            loop.map((pt, idx) => ({
+
+              i: idx,
+              lat: Number(pt.latitude.toFixed(6)),
+              lon: Number(pt.longitude.toFixed(6)),
+            })),
+          );
+
           if (validateLoop(loop)) {
-            setLoops((prevLoops) => [...prevLoops, loop]);
-
-            const areaM2 = polygonArea(loop.map(toXY));
-            setTotalAreaM2((a) => a + areaM2);
-
-            // record loop summary on the active session
+            const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
             addLoopSummary(areaM2);
 
-            // reset path starting at the closure point so you continue a fresh tail
-            const tail = loop[0];
-            originRef.current = null;
-            xyRef.current = [toXY(tail)];
+            console.log(
+              '[loop-debug] BEFORE MERGE path length',
+              xyRef.current.length,
+            );
+
+            mergeLoopIntoTerritory(loop);
+
+            // ✅ keep full path so future loops can reuse old sides
+            setLoops((prevLoops) => [...prevLoops, loop]);
             accepted = true;
-            return [tail];
+            return [...prev, p];
           }
         }
 
@@ -415,18 +1028,41 @@ export default function MapScreen() {
     });
 
     if (accepted) {
+      ensureSessionStarted();
       appendRawPoint(p, t);
+
+      // ✅ Paper.io tail logic: leave territory, wander, re-enter
+      applyPaperIoTailLogic(p);
+
+      // ✅ Paper.io cut detection (loops that use existing territory edge)
+      if (prevForCut && territory) {
+        processPaperCut(prevForCut, p);
+      }
     }
   };
 
-  // start/stop gps tracking
+  // ---------- GPS tracking ----------
+
   const startTracking = async () => {
     if (watchRef.current) return;
     stopSim();
 
-    ensureSessionStarted();
+    try {
+      const { status } =
+        await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('[location] tracking permission not granted');
+        return;
+      }
+    } catch (e) {
+      console.warn('[location] startTracking permission error', e);
+      return;
+    }
 
+    ensureSessionStarted();
+    setHasUnfinishedRide(false);
     setIsTracking(true);
+
     watchRef.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
@@ -438,8 +1074,8 @@ export default function MapScreen() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         };
-        const p = mask(raw);
-        handleNewPoint(p, loc.coords.accuracy ?? 5);
+        const pt = mask(raw);
+        handleNewPoint(pt, loc.coords.accuracy ?? 5);
       },
     );
   };
@@ -450,7 +1086,8 @@ export default function MapScreen() {
     setIsTracking(false);
   };
 
-  // simple multi-route simulator (select route with the chip, then press sim ride)
+  // ---------- simulator ----------
+
   type SimRouteName =
     | 'campusSquare'
     | 'bigLoop'
@@ -458,8 +1095,10 @@ export default function MapScreen() {
     | 'nearGate'
     | 'figure8'
     | 'skinnyRibbon';
+
   const [routeName, setRouteName] =
     useState<SimRouteName>('campusSquare');
+
   const ROUTE_ORDER: SimRouteName[] = [
     'campusSquare',
     'bigLoop',
@@ -469,7 +1108,6 @@ export default function MapScreen() {
     'skinnyRibbon',
   ];
 
-  // short labels so the chip text stays compact
   const ROUTE_LABEL: Record<SimRouteName, string> = {
     campusSquare: 'campus',
     bigLoop: 'big loop',
@@ -479,7 +1117,6 @@ export default function MapScreen() {
     skinnyRibbon: 'ribbon',
   };
 
-  // route shapes in local meters around (0,0) — closed loops
   const ROUTES_XY: Record<SimRouteName, XY[]> = {
     campusSquare: [
       { x: 0, y: 0 },
@@ -532,7 +1169,6 @@ export default function MapScreen() {
     ],
   };
 
-  // densify a coarse polyline to ~10 m hops
   function densify(vertices: XY[], step = 10) {
     const out: XY[] = [];
     for (let i = 0; i < vertices.length - 1; i++) {
@@ -542,17 +1178,17 @@ export default function MapScreen() {
       const dy = b.y - a.y;
       const len = Math.hypot(dx, dy);
       const n = Math.max(1, Math.round(len / step));
-      for (let k = 0; k < n; k++)
+      for (let k = 0; k < n; k++) {
         out.push({
           x: a.x + (dx * k) / n,
           y: a.y + (dy * k) / n,
         });
+      }
     }
     out.push(vertices[vertices.length - 1]);
     return out;
   }
 
-  // sim interval
   const simTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -564,10 +1200,8 @@ export default function MapScreen() {
     stopTracking();
     setIsSimulating(true);
 
-    // Start a rawPaths session for the sim ride (testing)
     ensureSessionStarted();
 
-    // shift the chosen route so it starts at your current spot
     const base = toXY(current);
     const raw = ROUTES_XY[routeName];
     const shifted = raw.map((p) => ({
@@ -600,11 +1234,62 @@ export default function MapScreen() {
     setIsSimulating(false);
   };
 
-  // hud helpers
-  const toggleMask = () => setMaskLocation((m) => !m);
+  // ---------- Arrow controls (fake movement, counts as sessions) ----------
+
+  const nudgeCurrent = (dxMeters: number, dyMeters: number) => {
+    if (!current) return;
+
+    ensureSessionStarted();
+
+    if (!originRef.current) {
+      const mPerDegLat = 111111;
+      const mPerDegLon =
+        111111 * Math.cos((current.latitude * Math.PI) / 180);
+      originRef.current = {
+        lat: current.latitude,
+        lon: current.longitude,
+        mPerDegLat,
+        mPerDegLon,
+      };
+    }
+
+    const lastXY = toXY(current);
+    const nextXY: XY = {
+      x: lastXY.x + dxMeters,
+      y: lastXY.y + dyMeters,
+    };
+    const next = toLatLng(nextXY);
+
+    console.log('[arrow] move', {
+      from: {
+        lat: Number(current.latitude.toFixed(6)),
+        lon: Number(current.longitude.toFixed(6)),
+      },
+      to: {
+        lat: Number(next.latitude.toFixed(6)),
+        lon: Number(next.longitude.toFixed(6)),
+      },
+      dxMeters,
+      dyMeters,
+    });
+
+    handleNewPoint(next, 5);
+  };
+
+  // ---------- HUD helpers ----------
+
+  const toggleMask = () => {
+    setMaskLocation((m) => !m);
+  };
+
   const distanceMi = distanceMeters / 1609.344;
 
-  // map region fallback (central park if unknown)
+  const isResumeAvailable =
+    hasUnfinishedRide &&
+    path.length > 0 &&
+    !isTracking &&
+    !isSimulating;
+
   const region = {
     latitude: current?.latitude ?? 40.7812,
     longitude: current?.longitude ?? -73.9665,
@@ -612,7 +1297,7 @@ export default function MapScreen() {
     longitudeDelta: 0.01,
   };
 
-  // —— loop helpers ——  
+  // ---------- loop helpers ----------
 
   function findClosure(xy: XY[]) {
     const n = xy.length;
@@ -621,7 +1306,7 @@ export default function MapScreen() {
     const a = xy[n - 2];
     const b = xy[n - 1];
 
-    // snap to the very first point if we’re close enough
+    // snap to very first point
     const dx0 = b.x - xy[0].x;
     const dy0 = b.y - xy[0].y;
     if (dx0 * dx0 + dy0 * dy0 <= CLOSE_EPS_M * CLOSE_EPS_M) {
@@ -633,7 +1318,7 @@ export default function MapScreen() {
       };
     }
 
-    // check intersection with any older segment (skip neighbors)
+    // intersection with older segment
     for (let i = 0; i < n - 3; i++) {
       const c = xy[i];
       const d = xy[i + 1];
@@ -647,7 +1332,7 @@ export default function MapScreen() {
         };
     }
 
-    // snap to any earlier vertex if we’re within epsilon (not just the first)
+    // snap to any earlier vertex
     const closeIdx = findNearbyVertex(xy, CLOSE_EPS_M);
     if (closeIdx !== -1 && closeIdx < n - 3) {
       return {
@@ -700,43 +1385,62 @@ export default function MapScreen() {
     for (let i = closure.startIdx; i <= closure.endIdx; i++)
       ringXY.push(xyRef.current[i]);
     ringXY.push(closure.at);
-    const simplified = rdp(ringXY, 2); // gentle simplify for demo
+    const simplified = rdp(ringXY, 2);
     return simplified.map(toLatLng);
   }
 
   function validateLoop(loop: LatLng[]) {
     if (loop.length < MIN_RING_POINTS) return false;
+
     const xy = loop.map(toXY);
     const peri = pathLength(xy);
-    if (peri < MIN_PERIMETER_M) return false;
     const area = polygonArea(xy);
+
+    console.log('[loop]', {
+      points: loop.length,
+      perimeter: peri,
+      area,
+      hasTerritory: !!territory,
+    });
+
+    // ✅ FIRST loop: always accept (Paper.io “initial island”)
+    if (!territory) {
+      console.log('[loop] accepting as FIRST territory loop');
+      return true;
+    }
+
+    // Later loops must be “big enough”
+    if (peri < MIN_PERIMETER_M) return false;
     if (area < MIN_AREA_M2) return false;
+
     return true;
   }
 
   function pathLength(xy: XY[]) {
     let sum = 0;
-    for (let i = 1; i < xy.length; i++)
+    for (let i = 1; i < xy.length; i++) {
       sum += Math.hypot(
         xy[i].x - xy[i - 1].x,
         xy[i].y - xy[i - 1].y,
       );
+    }
     return sum;
   }
 
   function polygonArea(xy: XY[]) {
     let a = 0;
-    for (let i = 0; i < xy.length - 1; i++)
+    for (let i = 0; i < xy.length - 1; i++) {
       a += xy[i].x * xy[i + 1].y - xy[i + 1].x * xy[i].y;
+    }
     return Math.abs(a / 2);
   }
 
   function rdp(points: XY[], eps: number): XY[] {
     if (points.length < 3) return points;
-    const first = points[0],
-      last = points[points.length - 1];
-    let index = -1,
-      distMax = 0;
+    const first = points[0];
+    const last = points[points.length - 1];
+    let index = -1;
+    let distMax = 0;
     for (let i = 1; i < points.length - 1; i++) {
       const d = perpDistance(points[i], first, last);
       if (d > distMax) {
@@ -754,8 +1458,8 @@ export default function MapScreen() {
   }
 
   function perpDistance(p: XY, a: XY, b: XY) {
-    const dx = b.x - a.x,
-      dy = b.y - a.y;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
     if (dx === 0 && dy === 0)
       return Math.hypot(p.x - a.x, p.y - a.y);
     const t =
@@ -764,17 +1468,85 @@ export default function MapScreen() {
     return Math.hypot(p.x - proj.x, p.y - proj.y);
   }
 
+  // ---------- render helpers ----------
+
+  function renderTerritory() {
+    // ✅ Preferred: single merged territory
+    if (territory && territory.geometry) {
+      const geom = territory.geometry;
+
+      if (geom.type === 'Polygon') {
+        const outerRing = geom.coordinates[0];
+        const coords: LatLng[] = outerRing.map(
+          ([lng, lat]) => ({
+
+            latitude: lat,
+            longitude: lng,
+          }),
+        );
+
+        return (
+          <MapPolygon
+            coordinates={coords}
+            strokeWidth={3}
+            strokeColor="rgba(34,197,94,0.95)"
+            fillColor="rgba(34,197,94,0.6)"
+            zIndex={1000}
+          />
+        );
+      }
+
+      if (geom.type === 'MultiPolygon') {
+        return geom.coordinates.map((poly, idx) => {
+          const outerRing = poly[0];
+          const coords: LatLng[] = outerRing.map(
+            ([lng, lat]) => ({
+              latitude: lat,
+              longitude: lng,
+            }),
+          );
+
+          return (
+            <MapPolygon
+              key={`territory-${idx}`}
+              coordinates={coords}
+              strokeWidth={3}
+              strokeColor="rgba(34,197,94,0.95)"
+              fillColor="rgba(34,197,94,0.6)"
+              zIndex={1000}
+            />
+          );
+        });
+      }
+    }
+
+    // 🟢 Fallback: show each captured loop as its own polygon
+    if (!territory && loops.length) {
+      return loops.map((loop, idx) => (
+        <MapPolygon
+          key={`loop-fallback-${idx}`}
+          coordinates={loop}
+          strokeWidth={3}
+          strokeColor="rgba(34,197,94,0.95)"
+          fillColor="rgba(34,197,94,0.6)"
+          zIndex={1000}
+        />
+      ));
+    }
+
+    return null;
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        // hide native dot when masked so we don’t leak real location
         showsUserLocation={!maskLocation}
         followsUserLocation={!maskLocation}
         initialRegion={region}
         region={current ? region : undefined}
       >
-        {/* custom blue dot when masked */}
+        {/* fake blue dot when masked */}
         {maskLocation && current && (
           <Marker
             coordinate={current}
@@ -792,22 +1564,58 @@ export default function MapScreen() {
           <Polyline coordinates={path} strokeWidth={4} />
         )}
 
-        {/* claimed polygons */}
-        {loops.map((ring, i) => (
-          <Polygon
-            key={i}
-            coordinates={ring}
-            strokeWidth={3}
-            strokeColor="rgba(34,197,94,0.95)"
-            fillColor="rgba(34,197,94,0.28)"
-            zIndex={1000}
-          />
-        ))}
+        {/* Paper.io-style merged territory */}
+        {renderTerritory()}
       </MapView>
 
-      {/* bottom hud */}
+      {/* Arrow pad (for testing) */}
+      <View style={styles.arrowPad}>
+        <Pressable
+          style={styles.arrowBtn}
+          onPress={() => nudgeCurrent(0, ARROW_STEP_M)}
+        >
+          <Ionicons
+            name="chevron-up"
+            size={18}
+            color="#e5e7eb"
+          />
+        </Pressable>
+        <View style={styles.arrowRow}>
+          <Pressable
+            style={styles.arrowBtn}
+            onPress={() => nudgeCurrent(-ARROW_STEP_M, 0)}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color="#e5e7eb"
+            />
+          </Pressable>
+          <Pressable
+            style={styles.arrowBtn}
+            onPress={() => nudgeCurrent(ARROW_STEP_M, 0)}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color="#e5e7eb"
+            />
+          </Pressable>
+        </View>
+        <Pressable
+          style={styles.arrowBtn}
+          onPress={() => nudgeCurrent(0, -ARROW_STEP_M)}
+        >
+          <Ionicons
+            name="chevron-down"
+            size={18}
+            color="#e5e7eb"
+          />
+        </Pressable>
+      </View>
+
+      {/* bottom HUD */}
       <View style={styles.hud}>
-        {/* TOP: distance/area block kept full width */}
         <View style={styles.hudTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.hudLabel}>distance</Text>
@@ -816,13 +1624,13 @@ export default function MapScreen() {
             </Text>
             <Text style={styles.hudMeta}>
               territory{' '}
-              {(totalAreaM2 * 0.000247105).toFixed(2)} acres · loops{' '}
-              {loops.length}
+              {(totalAreaM2 * 0.000247105).toFixed(2)} acres ·
+              loops {loops.length}
             </Text>
           </View>
         </View>
 
-        {/* MIDDLE: chips row */}
+        {/* chips row */}
         <View style={styles.chipsRow}>
           <Pressable
             onPress={toggleMask}
@@ -901,7 +1709,7 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
-        {/* BOTTOM: buttons */}
+        {/* bottom buttons */}
         <View style={styles.row}>
           <Pressable
             style={[
@@ -919,19 +1727,23 @@ export default function MapScreen() {
               color="#fff"
               style={{ marginRight: 6 }}
             />
-            <Text style={styles.btnText}>start</Text>
+            <Text style={styles.btnText}>
+              {isResumeAvailable ? 'continue' : 'start'}
+            </Text>
           </Pressable>
 
           <Pressable
             style={[
               styles.btn,
               styles.stop,
-              !isTracking && !isSimulating && styles.btnDisabled,
+              !isTracking &&
+                !isSimulating &&
+                styles.btnDisabled,
             ]}
             onPress={() => {
               stopTracking();
               stopSim();
-              endActiveSession(); // triggers alert + log
+              endActiveSession();
             }}
             disabled={!isTracking && !isSimulating}
           >
@@ -953,7 +1765,7 @@ export default function MapScreen() {
                 borderColor: '#cbd5e1',
               },
             ]}
-            onPress={() => {
+            onPress={async () => {
               stopTracking();
               stopSim();
               setPath(current ? [current] : []);
@@ -961,6 +1773,20 @@ export default function MapScreen() {
               setLoops([]);
               setDistanceMeters(0);
               setTotalAreaM2(0);
+              setTerritory(null);
+              lastInsideRef.current = false;
+              tailRef.current = [];
+              setHasUnfinishedRide(false);
+              resetCutState();
+              try {
+                await AsyncStorage.removeItem(CURRENT_PATH_KEY);
+                await AsyncStorage.removeItem(LOOPS_KEY);
+              } catch (e) {
+                console.warn(
+                  'failed to clear unfinished ride',
+                  e,
+                );
+              }
             }}
           >
             <Ionicons
@@ -982,7 +1808,6 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  // floating panel at the bottom
   hud: {
     position: 'absolute',
     left: 12,
@@ -999,23 +1824,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-
-  // keep distance block on its own line
   hudTop: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-
-  // chips get their own row and can wrap
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 10,
   },
-
   hudLabel: {
     color: '#cbd5e1',
     fontSize: 12,
@@ -1034,8 +1854,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: 'lowercase',
   },
-
-  // chips
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1055,8 +1873,6 @@ const styles = StyleSheet.create({
   simOn: { backgroundColor: '#22c55e', borderColor: '#166534' },
   simOff: { backgroundColor: '#111827', borderColor: '#cbd5e1' },
   routeChip: { maxWidth: 160, flexShrink: 1 },
-
-  // buttons
   row: { flexDirection: 'row', gap: 10 },
   btn: {
     flex: 1,
@@ -1070,8 +1886,6 @@ const styles = StyleSheet.create({
   start: { backgroundColor: '#22c55e' },
   stop: { backgroundColor: '#ef4444' },
   btnText: { color: '#fff', fontWeight: '800' },
-
-  // custom masked blue dot
   fakeDotOuter: {
     width: 22,
     height: 22,
@@ -1087,5 +1901,27 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#3b82f6',
+  },
+  arrowPad: {
+    position: 'absolute',
+    right: 16,
+    top: '35%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  arrowRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  arrowBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(15,23,42,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
