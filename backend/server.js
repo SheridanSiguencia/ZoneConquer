@@ -6,17 +6,17 @@ const cors = require('cors');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const territoryRoutes = require('./routes/territories'); 
+const friendsRoutes = require('./routes/friends'); 
 const app = express();
 const PORT = 3000;
 
-// ✅ MIDDLEWARE ORDER MATTERS!
+
 app.use(cors({
-    origin: true,  // Allows all origins (or specify your Expo app URL)
-    credentials: true  // ← THIS IS CRITICAL for sessions to work!
+    origin: true, 
+    credentials: true  
   }));
 app.use(express.json());
 
-// ✅ SESSION MIDDLEWARE MUST COME BEFORE ROUTES
 app.use(session({
   secret: process.env.SESSION_SECRET || 'zoneconquer-secret-key',
   resave: false,
@@ -27,10 +27,13 @@ app.use(session({
   }
 }));
 
-// ✅ THEN YOUR ROUTES (after session middleware)
+
+
+
 app.use('/api/auth', authRoutes);             // auth
 app.use('/api/user', userRoutes);             // user
 app.use('/api/territories', territoryRoutes); // map
+app.use('/api/friends', friendsRoutes);       // friends
 
 // Test route
 app.get('/api/test', (req, res) => {

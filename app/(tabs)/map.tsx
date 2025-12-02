@@ -221,7 +221,33 @@ export default function MapScreen() {
     if (!maskLocation || !maskRef.current) return p
     return { latitude: p.latitude + maskRef.current.dLat, longitude: p.longitude + maskRef.current.dLon }
   }
-
+  const testFriendsAPI = async () => {
+    try {
+      console.log('🧪 Testing friends API...');
+      
+      // Test getting friends list
+      const friends = await friendsAPI.getFriends();
+      console.log('✅ Friends list:', friends);
+      
+      // Test getting pending requests
+      const pending = await friendsAPI.getPendingRequests();
+      console.log('✅ Pending requests:', pending);
+      
+      // Test getting friends territories
+      const territories = await friendsAPI.getFriendsTerritories();
+      console.log('✅ Friends territories:', territories.length);
+      
+    } catch (error) {
+      console.error('❌ Friends API test failed:', error);
+    }
+  };
+  
+  // Call it when user logs in
+  useEffect(() => {
+    if (user) {
+      testFriendsAPI();
+    }
+  }, [user]);
   // load saved territory once on mount
   /*
   useEffect(() => {

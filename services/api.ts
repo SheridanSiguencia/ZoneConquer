@@ -24,7 +24,38 @@ export interface UserStats {
   weekly_goal: number;
 }
 
-// The actual API functions
+export interface Friend {
+  friendship_id: string;
+  user_id: string;
+  username: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  territories_owned: number;
+  weekly_distance: number;
+  created_at: string;
+}
+
+export interface FriendRequest {
+  friendship_id: string;
+  user_id: string;
+  username: string;
+  created_at: string;
+}
+
+export type LatLng = {
+  latitude: number;
+  longitude: number;
+};
+
+export interface FriendTerritory {
+  territory_id: string;
+  coordinates: LatLng[][];
+  user_id: string;
+  username: string;
+  area_sq_meters: number;
+  created_at: string;
+}
+
+
 export const authAPI = {
   async register(userData: { username: string; email: string; password: string }) {
     const response = await fetch(`${API_BASE}/auth/register`, {
@@ -113,4 +144,133 @@ export const userAPI = {
     }
     return await response.json();
   }
+};
+
+// friendsAPI object
+export const friendsAPI = {
+  // Send friend request
+  async sendRequest(username: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/friends/send-request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ username }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to send friend request');
+    }
+
+    return await response.json();
+  },
+
+  // Accept friend request
+  async acceptRequest(friendshipId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/friends/accept-request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ friendship_id: friendshipId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to accept friend request');
+    }
+
+    return await response.json();
+  },
+
+  // Reject friend request
+  async rejectRequest(friendshipId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/friends/reject-request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ friendship_id: friendshipId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to reject friend request');
+    }
+
+    return await response.json();
+  },
+
+  // Get friends list
+  async getFriends(): Promise<Friend[]> {
+    const response = await fetch(`${API_BASE}/friends/list`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch friends list');
+    }
+
+    const result = await response.json();
+    return result.friends || [];
+  },
+
+  // Get pending friend requests
+  async getPendingRequests(): Promise<FriendRequest[]> {
+    const response = await fetch(`${API_BASE}/friends/pending`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch pending requests');
+    }
+
+    const result = await response.json();
+    return result.pending_requests || [];
+  },
+
+  // Get friends' territories for map
+  async getFriendsTerritories(): Promise<FriendTerritory[]> {
+    const response = await fetch(`${API_BASE}/friends/territories`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch friends territories');
+    }
+
+    const result = await response.json();
+    return result.territories || [];
+  },
+
+  // Remove friend (unfriend)
+  async removeFriend(friendId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/friends/remove`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ friend_id: friendId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to remove friend');
+    }
+
+    return await response.json();
+  },
 };
