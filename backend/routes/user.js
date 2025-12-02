@@ -4,7 +4,7 @@ const pool = require('../config/database');
 
 router.get('/stats', async (req, res) => {
   try {
-    // ADD THIS DEBUG CODE RIGHT HERE:
+    
     console.log('🔍 SESSION DEBUG:', {
       session: req.session,
       userId: req.session.user_id,
