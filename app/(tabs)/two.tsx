@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useUserStore } from '../../store/user';
+import { useAuth } from '../../contexts/AuthContext';
 import Colors from '../../constants/Colors';
 
 const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';

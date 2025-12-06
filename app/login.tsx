@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import TermsModal from '../components/TermsModal';
 // import { authAPI } from '../services/api';
 import { useUserStore } from '../store/user';
