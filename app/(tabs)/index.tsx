@@ -1,29 +1,35 @@
 // app/(tabs)/index.tsx
-import { Ionicons } from '@expo/vector-icons'
-import { Link } from 'expo-router'
-import { useCallback, useMemo } from 'react'
-import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator } from 'react-native'
-import { useUserStats } from '../../hooks/useUserStats'
+import { Ionicons } from '@expo/vector-icons';
+import { Link } from 'expo-router';
+import { useCallback, useMemo, useEffect } from 'react';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator, RefreshControl } from 'react-native';
+import { useUserStore } from '../../store/user';
+import { useFocusEffect } from 'expo-router'; // Add this import
+
 
 export default function HomeScreen() {
-  const { stats, loading, error, refetch } = useUserStats();
+  const { stats, loading, error, fetchUserStats } = useUserStore();
 
-  // ADD this missing function
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🏠 Home screen focused, refreshing stats');
+      fetchUserStats();
+    }, [fetchUserStats])
+  );
+
   const onInvite = useCallback(async () => {
     try {
-      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' })
-    } catch {}
-  }, [])
+      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' });
+    } catch {} // eslint-disable-line
+  }, []);
 
-  // Calculate weekly percentage
   const weeklyPct = useMemo(() => {
     if (!stats || !stats.weekly_goal || stats.weekly_goal === 0) return 0;
     const weeklyDistance = stats.weekly_distance || 0;
     return Math.min(100, Math.round((weeklyDistance / stats.weekly_goal) * 100));
   }, [stats]);
 
-  // ADD loading state
-  if (loading) {
+  if (loading && !stats) {
     return (
       <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#22c55e" />
@@ -32,7 +38,6 @@ export default function HomeScreen() {
     );
   }
 
-  // ADD error state
   if (error || !stats) {
     return (
       <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -40,13 +45,14 @@ export default function HomeScreen() {
         <Text style={{ color: '#ef4444', marginBottom: 12, textAlign: 'center' }}>
           {error || 'Failed to load stats'}
         </Text>
-        <Pressable onPress={refetch} style={styles.invite}>
+        <Pressable onPress={fetchUserStats} style={styles.invite}>
           <Ionicons name="reload" size={16} color="#111827" />
           <Text style={styles.inviteText}>Retry</Text>
         </Pressable>
       </View>
     );
   }
+
   return (
     <View style={styles.screen}>
       {/* decorative orbs for depth without extra deps */}
@@ -54,7 +60,13 @@ export default function HomeScreen() {
       <View style={[styles.orb, { top: 220, right: -80, backgroundColor: '#123' }]} />
       <View style={[styles.orb, { bottom: -90, left: -70, backgroundColor: '#1b3' }]} />
   
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.container} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={fetchUserStats} tintColor="#e5e7eb" />
+        }
+      >
         {/* header row */}
         <View style={styles.topRow}>
           <View style={styles.brandRow}>
@@ -102,7 +114,7 @@ export default function HomeScreen() {
           <View style={styles.quickRow}>
             <View style={[styles.quickItem, { borderColor: '#134e4a' }]}>
               <Ionicons name='footsteps' size={14} color='#93e6b8' />
-              <Text style={styles.quickValue}>{(stats.today_distance || 0).toFixed(1)} mi</Text>
+              <Text style={styles.quickValue}>{Number(stats.today_distance || 0).toFixed(1)} mi</Text>
               <Text style={styles.quickLabel}>today</Text>
             </View>
             <View style={[styles.quickItem, { borderColor: '#1f2937' }]}>
@@ -117,7 +129,7 @@ export default function HomeScreen() {
             </View>
           </View>
         </View> 
-        {/* ✅ close heroCard */}
+        {/* close heroCard */}
   
         {/* weekly progress */}
         <View style={styles.sectionCard}>
@@ -180,13 +192,13 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
   
-          <Link href='/(tabs)/map' asChild>
+          <Link href='/(tabs)/two' asChild>
             <Pressable
-              style={[styles.tile, styles.tileBlue]}
-              android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+              style={[styles.tile, styles.tilePurple]}
+              android_ripple={{ color: 'rgba(255,255,255,0.08)' }}
             >
-              <Ionicons name='map' size={20} color='#ffffff' />
-              <Text style={styles.tileTextLight}>open map</Text>
+              <Ionicons name='person-outline' size={20} color='#ffffff' />
+              <Text style={styles.tileTextLight}>view profile</Text>
             </Pressable>
           </Link>
   
@@ -217,7 +229,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </View>
-  )  
+  )
 }
 
 const styles = StyleSheet.create({
@@ -342,7 +354,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 3,
   },
   tileGreen: { backgroundColor: '#16a34a', borderColor: '#065f46' },
-  tileBlue: { backgroundColor: '#2563eb', borderColor: '#1e40af' },
+  tilePurple: { backgroundColor: '#7c3aed', borderColor: '#5b21b6' },
   tileSlate: { backgroundColor: '#111827', borderColor: '#334155' },
   tileAmber: { backgroundColor: '#f59e0b', borderColor: '#b45309' },
 

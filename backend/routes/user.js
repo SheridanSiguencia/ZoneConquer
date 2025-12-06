@@ -39,15 +39,15 @@ router.get('/stats', async (req, res) => {
          RETURNING *`,
         [userId]
       );
-      console.log('✅ Created default stats:', defaultStats.rows[0]);
+      console.log('Created default stats:', defaultStats.rows[0]);
       return res.json(defaultStats.rows[0]);
     }
 
-    console.log('✅ Returning user stats:', result.rows[0]);
+    console.log('Returning user stats:', result.rows[0]);
     res.json(result.rows[0]);
     
   } catch (error) {
-    console.error('💥 Error fetching user stats:', error);
+    console.error('Error fetching user stats:', error);
     res.status(500).json({ error: 'Failed to fetch user stats' });
   }
 });
@@ -90,6 +90,64 @@ router.post('/update-distance', async (req, res) => {
   } catch (error) {
     console.error('Distance update error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/profile', async (req, res) => {
+  try {
+    const userId = req.session.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const result = await pool.query(
+      `SELECT username, email, created_at FROM users WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// @route   POST /api/user/update-profile
+// @desc    Update user's profile data
+// @access  Private (requires authentication)
+router.post('/update-profile', async (req, res) => {
+  try {
+    const userId = req.session.user_id;
+    const { username, email } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    // Basic validation
+    if (!username || !email) {
+      return res.status(400).json({ success: false, error: 'Username and email are required.' });
+    }
+
+    // Update user in the database
+    const result = await pool.query(
+      `UPDATE users SET username = $1, email = $2 WHERE user_id = $3 RETURNING username, email, created_at`,
+      [username, email, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, profile: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ success: false, error: 'Failed to update user profile.' });
   }
 });
 

@@ -1,13 +1,21 @@
 require('dotenv').config({ path: '../.env' });
+console.log('[server] DATABASE_URL in server.js =', process.env.DATABASE_URL);
 
 const express = require('express');
 const session = require('express-session');  
 const cors = require('cors');
 const { router: authRoutes } = require('./routes/auth');
 const userRoutes = require('./routes/user');
-const territoryRoutes = require('./routes/territories'); 
+const territoryRoutes = require('./routes/territories');
 const friendsRoutes = require('./routes/friends'); 
+const gamificationRoutes = require('./routes/gamification'); // Import gamification routes
 const app = express();
+//  tiny logger to see every request
+app.use((req, res, next) => {
+  console.log(`[req] ${req.method} ${req.url}`);
+  next();
+});
+
 const PORT = 3000;
 
 
@@ -34,6 +42,7 @@ app.use('/api/auth', authRoutes);             // auth
 app.use('/api/user', userRoutes);             // user
 app.use('/api/territories', territoryRoutes); // map
 app.use('/api/friends', friendsRoutes);       // friends
+app.use('/api/gamification', gamificationRoutes); // gamification
 
 // Test route
 app.get('/api/test', (req, res) => {

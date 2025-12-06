@@ -1,3 +1,4 @@
+// territories.js file
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database'); // Using your existing database config
