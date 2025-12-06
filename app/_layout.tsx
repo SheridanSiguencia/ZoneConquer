@@ -3,7 +3,6 @@
 
 import { useFonts, SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Stack } from 'expo-router';
-import { AuthProvider } from '../contexts/AuthContext';
 import { useEffect } from 'react';
 import { SplashScreen } from 'expo-router';
 import { View, Text } from 'react-native';
@@ -28,16 +27,14 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* auth screens */}
-        <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
-        <Stack.Screen name="forgot-password" />
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* auth screens */}
+      <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
+      <Stack.Screen name="forgot-password" />
 
-        {/* main app (tabs group keeps its own headers) */}
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </AuthProvider>
+      {/* main app (tabs group keeps its own headers) */}
+      <Stack.Screen name="(tabs)" />
+    </Stack>
   );
 }

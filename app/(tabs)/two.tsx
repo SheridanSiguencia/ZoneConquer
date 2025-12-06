@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Link, router, useFocusEffect } from 'expo-router';
-import { useCallback, useState, useEffect } from 'react';
+import { Link, router } from 'expo-router';
+import { useCallback, useEffect } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,55 +12,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../../contexts/AuthContext';
+import { useUserStore } from '../../store/user';
 import Colors from '../../constants/Colors';
-
-const USER_PROFILE_KEY = 'zoneconquer_user_profile_v1';
-
-type Achievement = {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  status: 'unlocked' | 'locked' | 'progress';
-  progress?: number;
-};
-
-const achievements: Achievement[] = [
-  { icon: 'medal', title: 'First Zone Captured', status: 'unlocked' },
-  { icon: 'bicycle', title: '10 km in a Day', status: 'unlocked' },
-  { icon: 'walk', title: '5,000 Steps', status: 'progress', progress: 75 },
-  { icon: 'people', title: 'Invite 3 Friends', status: 'locked' },
-  { icon: 'calendar', title: '7-Day Streak', status: 'locked' },
-  { icon: 'map', title: 'Claim 10 Territories', status: 'locked' },
-  { icon: 'trophy', title: 'Reach 10,000 XP', status: 'locked' },
-];
-
-type Challenge = {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  description: string;
-  progress: number;
-};
-
-const challenges: Challenge[] = [
-  {
-    icon: 'flame',
-    title: 'Weekly Distance',
-    description: 'Ride 50km in a week',
-    progress: 35,
-  },
-  {
-    icon: 'stopwatch',
-    title: 'Time Trial',
-    description: 'Beat your best time on a 5km route',
-    progress: 0,
-  },
-  {
-    icon: 'trending-up',
-    title: 'Elevation Gain',
-    description: 'Climb 500m in a single ride',
-    progress: 80,
-  },
-];
 
 export default function ProfileScreen() {
   const {
@@ -118,14 +70,16 @@ export default function ProfileScreen() {
         <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.headerCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{profile?.username.charAt(0).toUpperCase()}</Text>
+              <Text style={styles.avatarText}>
+                {profile?.username?.charAt(0).toUpperCase() || 'U'}
+              </Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{profile?.username}</Text>
-              <Text style={styles.handle}>@{profile?.username.toLowerCase()}</Text>
+              <Text style={styles.name}>{profile?.username || 'User'}</Text>
+              <Text style={styles.handle}>@{profile?.username?.toLowerCase() || 'user'}</Text>
               <Text style={styles.memberSince}>
-                Member since {new Date(profile?.created_at || '').getFullYear()}
+                Member since {profile?.created_at ? new Date(profile.created_at).getFullYear() : '2024'}
               </Text>
             </View>
 
@@ -148,21 +102,28 @@ export default function ProfileScreen() {
           {error && <Text style={{ color: 'red' }}>{error}</Text>}
           {stats && (
             <View style={styles.statsRow}>
+              {/* Weekly Goal Progress - Since there's no XP in UserStats */}
               <View style={[styles.statCard, { backgroundColor: Colors.light.secondary }]}>
                 <Ionicons name="trophy-outline" size={18} color="#fde68a" />
-                <Text style={styles.statValue}>{stats.territories_owned}</Text>
-                <Text style={styles.statLabel}>XP</Text>
+                <Text style={styles.statValue}>
+                  {stats.weekly_goal > 0 
+                    ? `${((stats.weekly_distance / stats.weekly_goal) * 100).toFixed(0)}%` 
+                    : '0%'}
+                </Text>
+                <Text style={styles.statLabel}>Weekly</Text>
               </View>
 
+              {/* Territories Owned */}
               <View style={[styles.statCard, { backgroundColor: Colors.light.primary }]}>
                 <Ionicons name="expand-outline" size={18} color="#bbf7d0" />
-                <Text style={styles.statValue}>{stats.today_distance.toFixed(1)}</Text>
+                <Text style={styles.statValue}>{stats.territories_owned || 0}</Text>
                 <Text style={styles.statLabel}>Territory</Text>
               </View>
 
+              {/* Current Streak */}
               <View style={[styles.statCard, { backgroundColor: '#064e3b' }]}>
                 <Ionicons name="flame-outline" size={18} color="#fde68a" />
-                <Text style={styles.statValue}>{stats.current_streak}</Text>
+                <Text style={styles.statValue}>{stats.current_streak || 0}</Text>
                 <Text style={styles.statLabel}>Streak</Text>
               </View>
             </View>
@@ -174,10 +135,10 @@ export default function ProfileScreen() {
               {achievements.map((ach) => {
                 const userAch = userAchievements.find((ua) => ua.achievement_id === ach.achievement_id);
                 const status = userAch ? (userAch.unlocked_at ? 'unlocked' : 'progress') : 'locked';
-                const progress = userAch ? (userAch.progress / ach.threshold) * 100 : 0;
+                const progress = userAch && ach.threshold ? (userAch.progress / ach.threshold) * 100 : 0;
 
                 return (
-                  <View key={ach.name} style={styles.achItem}>
+                  <View key={ach.achievement_id} style={styles.achItem}>
                     <View style={[styles.achIcon, status === 'locked' && styles.achIconLocked]}>
                       <Ionicons
                         name={status === 'locked' ? 'lock-closed' : (ach.icon as any)}
@@ -189,9 +150,9 @@ export default function ProfileScreen() {
                       <Text style={[styles.achText, status === 'locked' && styles.achTextLocked]}>
                         {ach.name}
                       </Text>
-                      {status === 'progress' && (
+                      {status === 'progress' && ach.threshold && (
                         <View style={styles.progressTrack}>
-                          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+                          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
                         </View>
                       )}
                     </View>
@@ -206,10 +167,11 @@ export default function ProfileScreen() {
             <View style={styles.achList}>
               {challenges.map((challenge) => {
                 const userCh = userChallenges.find((uc) => uc.challenge_id === challenge.challenge_id);
-                const progress = userCh ? (userCh.current_value / challenge.goal_value) * 100 : 0;
+                const progress = userCh && challenge.goal_value ? 
+                  (userCh.current_value / challenge.goal_value) * 100 : 0;
 
                 return (
-                  <View key={challenge.name} style={styles.achItem}>
+                  <View key={challenge.challenge_id} style={styles.achItem}>
                     <View style={styles.achIcon}>
                       <Ionicons name={challenge.icon as any} size={20} color={Colors.light.primary} />
                     </View>
@@ -217,7 +179,7 @@ export default function ProfileScreen() {
                       <Text style={styles.achText}>{challenge.name}</Text>
                       <Text style={styles.challengeDescription}>{challenge.description}</Text>
                       <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${progress}%` }]} />
+                        <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
                       </View>
                     </View>
                   </View>

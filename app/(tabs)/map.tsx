@@ -22,7 +22,7 @@ import MapView, {
 } from 'react-native-maps';
 
 import { useUserStore } from '../../store/user';
-
+import { useFocusEffect } from '@react-navigation/native';
 
 import type {
   Feature,
@@ -35,15 +35,17 @@ type LatLng = { latitude: number; longitude: number };
 type XY = { x: number; y: number };
 type TerritoryFeature = Feature<GeoPolygon | MultiPolygon>;
 
-// thresholds for what counts as a “real” loop
+// thresholds for what counts as a "real" loop
 const MIN_PERIMETER_M = 80;
 const MIN_AREA_M2 = 800;
 const MIN_RING_POINTS = 4;
 const CLOSE_EPS_M = 12;
 
 // local storage keys
-const LOOPS_KEY = 'zoneconquer_loops_v1';
-const CURRENT_PATH_KEY = 'zoneconquer_current_path_v1';
+// const LOOPS_KEY = 'zoneconquer_loops_v1';
+// const CURRENT_PATH_KEY = 'zoneconquer_current_path_v1'; //going to make it save based on user session 
+const getCurrentPathKey = (userId: string) => 
+  `zoneconquer_current_path_v1_${userId}`;
 
 type SavedRide = {
   path: LatLng[];
@@ -75,7 +77,7 @@ const haversineMeters = (a: LatLng, b: LatLng) => {
 };
 
 export default function MapScreen() {
-  // make user is signed in for debugging will delete later but
+  // make user is signed in for debugging will delete later
   useEffect(() => {
     console.log('🔗 FULL API URL DEBUG:');
     console.log('Base URL:', process.env.EXPO_PUBLIC_API_BASE);
@@ -91,7 +93,17 @@ export default function MapScreen() {
   // using zustand
   const { user, fetchUserStats, updateDistance, stats } = useUserStore();
   const [current, setCurrent] = useState<LatLng | null>(null);
-  // breadcrumb line you’re drawing this session
+
+  const [allTerritories, setAllTerritories] = useState<{
+    territory_id: string;
+    coordinates: LatLng[][];
+    username: string;
+    user_id: string;
+    area_sq_meters: number;
+    created_at: string;
+  }[]>([]);
+
+  // breadcrumb line you're drawing this session
   const [path, setPath] = useState<LatLng[]>([]);
   // distance accumulator (meters)
   const [distanceMeters, setDistanceMeters] = useState(0);
@@ -210,8 +222,40 @@ export default function MapScreen() {
     setPath([anchor]);
   };
 
+  const loadAllTerritories = async () => {
+    console.log('🔄 loadAllTerritories CALLED');
+  
+    if (!user) {
+      console.log('❌ No user in loadAllTerritories');
+      return;
+    }
+  
+    try {
+      console.log('🌐 Fetching territories from API...');
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+  
+      const result = await response.json();
+  
+      if (result.success) {
+        console.log('✅ Setting territories to state:', result.territories.length);
+        setAllTerritories(result.territories);
+      } else {
+        console.warn('API error:', result.error);
+      }
+    } catch (error) {
+      console.warn('Fetch error:', error);
+    }
+  };
   // ---------- load saved stuff on mount ----------
 
+  /*
   // load saved territory once on mount
   useEffect(() => {
     (async () => {
@@ -247,71 +291,105 @@ export default function MapScreen() {
       }
     })();
   }, []);
-
+*/
   // restore unfinished ride (path + distance + mask offset) on mount
   useEffect(() => {
+    if (!user?.user_id) return;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(CURRENT_PATH_KEY);
+        const key = getCurrentPathKey(user.user_id);
+        const raw = await AsyncStorage.getItem(key);
         if (!raw) return;
-
+  
         const saved: SavedRide = JSON.parse(raw);
         if (!saved.path || saved.path.length === 0) return;
-
+  
         if (maskLocation && saved.maskOffset) {
           maskRef.current = saved.maskOffset;
         }
-
+  
         originRef.current = null;
         xyRef.current = [];
         xyRef.current = saved.path.map((p) => toXY(p));
-
+  
         setPath(saved.path);
         setCurrent(saved.path[saved.path.length - 1]);
-
+  
         if (typeof saved.distanceMeters === 'number') {
           setDistanceMeters(saved.distanceMeters);
         }
-
+  
         hasRestoredCurrentPathRef.current = true;
         setHasUnfinishedRide(true);
-
+  
         console.log(
           '[currentPath] restored',
           saved.path.length,
-          'points',
+          'points for user',
+          user.user_id,
         );
       } catch (e) {
         console.warn('failed to load unfinished ride', e);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.user_id]);
     // Save territories to the database
-    const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
-      if (!user) {
-        console.log('User not logged in, skipping territory save');
-        return;
-      }
-  
-    try {
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include', // Important for sessions
-          body: JSON.stringify({
-            coordinates: [loop], // Wrap in array for polygon rings
-            area_sq_meters: areaM2,
-          }),
+ // Use YOUR OLD version (lines 120-165 in old_map.tsx)
+const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
+  if (!user) {
+    console.log('User not logged in, skipping territory save');
+    return;
+  }
 
-        }
-      );
+  try {
+    const response = await fetch(
+      `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          coordinates: [loop],
+          area_sq_meters: areaM2,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('✅ Territory saved to database:', result.territory_id);
+      loadAllTerritories(); // ✅ This reloads from DB
+    } else {
+      console.warn('❌ Failed to save territory:', result.error);
+    }
+  } catch (error) {
+    console.warn('❌ Error saving territory:', error);
+  }
+};
 
   // ---------- react to mask toggle ----------
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        console.log('🗺️ Map tab focused - loading territories for user:', user.user_id);
+        loadAllTerritories();
+      }
+      return () => {
+        console.log('🗺️ Map tab unfocused');
+      };
+    }, [user]),
+  );
+
+  useEffect(() => {
+    if (user) {
+      console.log('👤 User logged in, testing territory load...');
+      loadAllTerritories();
+    }
+  }, [user]);
 
   useEffect(() => {
     // Skip the very first run on mount so we don't clobber any restored ride.
@@ -418,6 +496,7 @@ export default function MapScreen() {
 
   // ---------- persistence ----------
 
+  /*
   // persist merged territory when NOT masked
   useEffect(() => {
     (async () => {
@@ -437,35 +516,38 @@ export default function MapScreen() {
       }
     })();
   }, [loops, totalAreaM2, territory, maskLocation]);
+  */
 
   // persist unfinished ride breadcrumb
   useEffect(() => {
+    if (!user?.user_id) return;
+    
     (async () => {
       try {
+        const key = getCurrentPathKey(user.user_id);
+        
         if (!current || path.length === 0) {
-          await AsyncStorage.removeItem(CURRENT_PATH_KEY);
+          await AsyncStorage.removeItem(key);
           setHasUnfinishedRide(false);
           return;
         }
-
+  
         const maskOffset =
           maskLocation && maskRef.current ? maskRef.current : null;
-
+  
         const toSave: SavedRide = {
           path,
           distanceMeters,
           maskOffset,
         };
-
-        await AsyncStorage.setItem(
-          CURRENT_PATH_KEY,
-          JSON.stringify(toSave),
-        );
+  
+        await AsyncStorage.setItem(key, JSON.stringify(toSave));
+        console.log('[currentPath] saved for user', user.user_id);
       } catch (e) {
         console.warn('failed to save unfinished ride', e);
       }
     })();
-  }, [current, path, distanceMeters, maskLocation]);
+  }, [current, path, distanceMeters, maskLocation, user?.user_id]);
 
   // ---------- rawPaths helpers ----------
 
@@ -611,29 +693,29 @@ export default function MapScreen() {
 
   function mergeLoopIntoTerritory(loop: LatLng[]) {
     if (loop.length < 3) return;
-
+  
     // LatLng[] → GeoJSON ring [ [lng, lat], ... ]
     const ring: [number, number][] = loop.map((p) => [
       p.longitude,
       p.latitude,
     ]);
     if (!ring.length) return;
-
+  
     // ensure closed ring
     const first = ring[0];
     const last = ring[ring.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
       ring.push([...first] as [number, number]);
     }
-
+  
     const loopPoly = turf.polygon([ring]) as TerritoryFeature;
     const loopArea = turf.area(loopPoly);
-
+  
     if (loopArea <= 0) {
       console.warn('[territory] new loop has zero area, skipping');
       return;
     }
-
+  
     // 🔹 No existing territory → this is the first island
     const existingPolys = extractPolygons(territory);
     if (existingPolys.length === 0 || totalAreaM2 <= 0) {
@@ -977,7 +1059,7 @@ export default function MapScreen() {
         }
       }
 
-      // Tail is consumed once we’ve merged (or decided not to)
+      // Tail is consumed once we've merged (or decided not to)
       tailRef.current = [];
     }
 
@@ -1054,8 +1136,7 @@ export default function MapScreen() {
             accepted = true;
             return [...prev, p];
           }
-        : s,
-    );
+        }
 
         accepted = true;
         return [...prev, p];
@@ -1070,36 +1151,6 @@ export default function MapScreen() {
 
       // ✅ Paper.io tail logic: leave territory, wander, re-enter
       applyPaperIoTailLogic(p);
-    const id = activeSessionIdRef.current;
-    activeSessionIdRef.current = null;
-
-    const prev = sessionsRef.current;
-    const endedAt = Date.now();
-
-    const next = prev.map((s) =>
-      s.id === id && s.endedAt == null ? { ...s, endedAt } : s,
-    );
-
-    persistSessions(next);
-
-    const finished = next.find((s) => s.id === id);
-    const numPoints = finished?.points.length ?? 0;
-    const numLoops = finished?.loops.length ?? 0;
-
-    console.log(
-      '[rawPaths] ended session',
-      id,
-      'points:',
-      numPoints,
-      'loops:',
-      numLoops,
-    );
-
-    Alert.alert(
-      'Raw paths saved',
-      `Session saved with ${numPoints} points and ${numLoops} loops.`,
-    );
-  };
 
       // ✅ Paper.io cut detection (loops that use existing territory edge)
       if (prevForCut && territory) {
@@ -1268,12 +1319,6 @@ export default function MapScreen() {
     setIsSimulating(true);
 
     // shift the chosen route so it starts at your current spot
-    const base = toXY(current)
-    const raw = ROUTES_XY[routeName]
-    const shifted = raw.map(p => ({ x: p.x + base.x, y: p.y + base.y }))
-    const dense = densify(shifted, 10)
-    const latlngRoute = dense.map(toLatLng)
-
     const base = toXY(current);
     const raw = ROUTES_XY[routeName];
     const shifted = raw.map((p) => ({
@@ -1463,28 +1508,47 @@ export default function MapScreen() {
 
   function validateLoop(loop: LatLng[]) {
     if (loop.length < MIN_RING_POINTS) return false;
-
+  
     const xy = loop.map(toXY);
     const peri = pathLength(xy);
     const area = polygonArea(xy);
-
-    console.log('[loop]', {
+  
+    console.log('[loop] validation:', {
       points: loop.length,
       perimeter: peri,
       area,
       hasTerritory: !!territory,
     });
-
-    // ✅ FIRST loop: always accept (Paper.io “initial island”)
+  
+    // First loop: always accept (Paper.io "initial island")
     if (!territory) {
       console.log('[loop] accepting as FIRST territory loop');
+      
+      // Save to DB when it's the first territory (if not masked)
+      if (!maskLocation) {
+        console.log('[loop] Calling saveTerritoryToDB...');
+        saveTerritoryToDB(loop, area);
+      } else {
+        console.log('[loop] Skipping DB save because maskLocation is ON');
+      }
+      
       return true;
     }
-
-    // Later loops must be “big enough”
-    if (peri < MIN_PERIMETER_M) return false;
-    if (area < MIN_AREA_M2) return false;
-
+  
+    // Later loops must be "big enough"
+    if (peri < MIN_PERIMETER_M) {
+      console.log('[loop] Rejected: perimeter too small', peri, '<', MIN_PERIMETER_M);
+      return false;
+    }
+    if (area < MIN_AREA_M2) {
+      console.log('[loop] Rejected: area too small', area, '<', MIN_AREA_M2);
+      return false;
+    }
+  
+    // doesnt save merged territories to backend! it acts as separate entities but may change to updating in future
+    // The frontend will merge them visually, but we don't want duplicate DB records
+    console.log('[loop] Accepting but NOT saving to DB (will be merged locally)');
+    
     return true;
   }
 
@@ -1638,6 +1702,24 @@ export default function MapScreen() {
 
         {/* Paper.io-style merged territory */}
         {renderTerritory()}
+
+        {/* Database territories (from your old code) */}
+        {allTerritories.map((territory, i) => {
+          const polygonCoordinates = territory.coordinates[0];
+          if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
+            return null;
+          }
+          return (
+            <MapPolygon
+              key={`db-territory-${territory.territory_id}-${i}`}
+              coordinates={polygonCoordinates}
+              strokeWidth={2}
+              strokeColor="rgba(59,130,246,0.8)" // Blue for DB territories
+              fillColor="rgba(59,130,246,0.2)"
+              zIndex={500} // Below the merged territory (zIndex 1000)
+            />
+          );
+        })}
       </MapView>
 
       {/* Arrow pad (for testing) */}
@@ -1837,6 +1919,7 @@ export default function MapScreen() {
                 borderColor: '#cbd5e1',
               },
             ]}
+            // Reset button onPress:
             onPress={async () => {
               stopTracking();
               stopSim();
@@ -1850,14 +1933,14 @@ export default function MapScreen() {
               tailRef.current = [];
               setHasUnfinishedRide(false);
               resetCutState();
+              
               try {
-                await AsyncStorage.removeItem(CURRENT_PATH_KEY);
-                await AsyncStorage.removeItem(LOOPS_KEY);
+                if (user?.user_id) {
+                  const key = getCurrentPathKey(user.user_id);
+                  await AsyncStorage.removeItem(key);
+                }
               } catch (e) {
-                console.warn(
-                  'failed to clear unfinished ride',
-                  e,
-                );
+                console.warn('failed to clear unfinished ride', e);
               }
             }}
           >

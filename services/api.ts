@@ -23,12 +23,6 @@ export interface UserProfile {
   created_at: string;
 }
 
-export interface UserProfile {
-  username: string;
-  email: string;
-  created_at: string;
-}
-
 export interface UserStats {
   user_id: string;
   territories_owned: number;
@@ -77,7 +71,6 @@ export interface Territory {
   created_at: string;
 }
 
-<<<<<<< HEAD
 // Interfaces for Gamification
 export interface Achievement {
   achievement_id: number;
@@ -149,9 +142,6 @@ export interface FriendTerritory {
 }
 
 
-=======
-// The actual API functions
->>>>>>> origin/teleport-mask
 export const authAPI = {
   async register(userData: {
     username: string;
@@ -172,6 +162,7 @@ export const authAPI = {
 
     return result;
   },
+
 
   async login(credentials: LoginData) {
     const response = await fetch(`${API_BASE}/auth/login`, {
@@ -219,19 +210,19 @@ export const userAPI = {
       throw new Error('Failed to fetch user stats');
     }
 
+
     const result = await response.json();
-<<<<<<< HEAD
     return {
       ...result,
-      territories_owned: Number(result.territories_owned),
-      current_streak: Number(result.current_streak),
-      today_distance: Number(result.today_distance),
-      weekly_distance: Number(result.weekly_distance),
-      weekly_goal: Number(result.weekly_goal),
+      user_id: result.user_id,
+      territories_owned: Number(result.territories_owned) || 0,
+      current_streak: Number(result.current_streak) || 0,
+      today_distance: Number(result.today_distance) || 0, // FIX THIS
+      weekly_distance: Number(result.weekly_distance) || 0, // FIX THIS
+      weekly_goal: Number(result.weekly_goal) || 15,
     };
-
   },
-
+  /*
   async updateDistance(
     distanceMiles: number,
   ): Promise<{ success: boolean; stats: UserStats }> {
@@ -240,27 +231,14 @@ export const userAPI = {
     // Convert miles to meters before sending
     const distanceMeters = distanceMiles * 1609.34;
     
-=======
-    return result;
-  },
-
-  // 🆕 expects distance in *miles* (we convert before calling this)
-  async updateDistance(
-    distanceMiles: number,
-  ): Promise<{ success: boolean; stats: UserStats }> {
->>>>>>> origin/teleport-mask
     const response = await fetch(`${API_BASE}/user/update-distance`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include',
-<<<<<<< HEAD
       // Send distance_meters instead of distance_miles
       body: JSON.stringify({ distance_meters: distanceMeters }),
-=======
-      body: JSON.stringify({ distance_miles: distanceMiles }),
->>>>>>> origin/teleport-mask
     });
   
     console.log('📥 API: updateDistance response status:', response.status);
@@ -283,7 +261,7 @@ export const userAPI = {
     console.log('✅ API: updateDistance success:', result);
     return result;
   },
-
+*/
   async checkStreak(): Promise<{ success: boolean; stats: UserStats }> {
     const response = await fetch(`${API_BASE}/user/check-streak`, {
       method: 'POST',
@@ -391,7 +369,6 @@ export const territoryAPI = {
     return result.territories;
   },
 };
-<<<<<<< HEAD
 
 // friendsAPI object
 export const friendsAPI = {
@@ -521,5 +498,3 @@ export const friendsAPI = {
     return await response.json();
   },
 };
-=======
->>>>>>> origin/teleport-mask
