@@ -23,6 +23,7 @@ import MapView, {
 
 import { useUserStore } from '../../store/user';
 import { useFocusEffect } from '@react-navigation/native';
+import { friendsAPI, FriendTerritory } from '@/services/api';
 
 import type {
   Feature,
@@ -103,6 +104,7 @@ export default function MapScreen() {
     created_at: string;
   }[]>([]);
 
+  const [friendTerritories, setFriendTerritories] = useState<FriendTerritory[]>([]);
   // breadcrumb line you're drawing this session
   const [path, setPath] = useState<LatLng[]>([]);
   // distance accumulator (meters)
@@ -253,6 +255,17 @@ export default function MapScreen() {
       console.warn('Fetch error:', error);
     }
   };
+
+  const fetchFriendTerritories = async () => {
+    try {
+      console.log('📡 Fetching friend territories...');
+      const territories = await friendsAPI.getFriendsTerritories();
+      console.log('✅ Friend territories fetched:', territories.length);
+      setFriendTerritories(territories);
+    } catch (error) {
+      console.error('❌ Failed to fetch friend territories:', error);
+    }
+  };
   // ---------- load saved stuff on mount ----------
 
   /*
@@ -360,13 +373,13 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     const result = await response.json();
 
     if (result.success) {
-      console.log('✅ Territory saved to database:', result.territory_id);
-      loadAllTerritories(); // ✅ This reloads from DB
+      console.log('Territory saved to database:', result.territory_id);
+      loadAllTerritories(); // This reloads from DB
     } else {
-      console.warn('❌ Failed to save territory:', result.error);
+      console.warn('Failed to save territory:', result.error);
     }
   } catch (error) {
-    console.warn('❌ Error saving territory:', error);
+    console.warn('Error saving territory:', error);
   }
 };
 
@@ -377,6 +390,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
       if (user) {
         console.log('🗺️ Map tab focused - loading territories for user:', user.user_id);
         loadAllTerritories();
+        fetchFriendTerritories();
       }
       return () => {
         console.log('🗺️ Map tab unfocused');
@@ -388,6 +402,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     if (user) {
       console.log('👤 User logged in, testing territory load...');
       loadAllTerritories();
+      fetchFriendTerritories();
     }
   }, [user]);
 
@@ -1529,7 +1544,8 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
         console.log('[loop] Calling saveTerritoryToDB...');
         saveTerritoryToDB(loop, area);
       } else {
-        console.log('[loop] Skipping DB save because maskLocation is ON');
+        saveTerritoryToDB(loop, area);
+        console.log('[loop] Masked save for testing ONLY');
       }
       
       return true;
@@ -1607,7 +1623,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
   // ---------- render helpers ----------
 
   function renderTerritory() {
-    // ✅ Preferred: single merged territory
+    // Preferred: single merged territory
     if (territory && territory.geometry) {
       const geom = territory.geometry;
 
@@ -1656,7 +1672,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
       }
     }
 
-    // 🟢 Fallback: show each captured loop as its own polygon
+    // Fallback: show each captured loop as its own polygon
     if (!territory && loops.length) {
       return loops.map((loop, idx) => (
         <MapPolygon
@@ -1673,6 +1689,37 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     return null;
   }
 
+  function renderFriendTerritories() {
+    if (!friendTerritories || friendTerritories.length === 0) {
+      console.log('No friend territories to render');
+      return null;
+    }
+
+    return friendTerritories.map((territory, index) => {
+      try {
+        // Friend territories might have nested coordinates array
+        const coordinates = territory.coordinates[0] || territory.coordinates;
+        const flatCoords = coordinates.flat();
+        
+        return (
+          <MapPolygon
+            key={`friend-${territory.territory_id}-${index}`}
+            coordinates={flatCoords.map(coord => ({
+              latitude: coord.latitude,
+              longitude: coord.longitude,
+            }))}
+            fillColor="rgba(255, 105, 180, 0.2)"  // Pink for friends
+            strokeColor="rgba(255, 105, 180, 0.7)"
+            strokeWidth={1.5}
+            zIndex={600} // Between user territories (1000) and DB territories (500)
+          />
+        );
+      } catch (error) {
+        console.error('Error rendering friend territory:', error);
+        return null;
+      }
+    });
+  }
   return (
     <View style={{ flex: 1 }}>
       <MapView
@@ -1700,10 +1747,13 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
           <Polyline coordinates={path} strokeWidth={4} />
         )}
 
-        {/* Paper.io-style merged territory */}
+        {/* merged territory */}
         {renderTerritory()}
+        
+        {/* Display friends territories */}
+        {renderFriendTerritories()}
 
-        {/* Database territories (from your old code) */}
+        {/* Database territories */}
         {allTerritories.map((territory, i) => {
           const polygonCoordinates = territory.coordinates[0];
           if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
