@@ -116,10 +116,11 @@ export default function MapScreen() {
   const [isTracking, setIsTracking] = useState(false);
   // raw loops for stats/debug only
   const [loops, setLoops] = useState<LatLng[][]>([]);
-  // merged Paper.io-style territory + area;
+  // merged territory + area;
   const [territory, setTerritory] =
     useState<TerritoryFeature | null>(null);
   const [totalAreaM2, setTotalAreaM2] = useState(0);
+  const [currentTerritoryId, setCurrentTerritoryId] = useState<string | null>(null);
 
   // rawPaths sessions
   const [sessions, setSessions] = useState<WalkSession[]>([]);
@@ -346,42 +347,116 @@ export default function MapScreen() {
       }
     })();
   }, [user?.user_id]);
-    // Save territories to the database
- // Use YOUR OLD version (lines 120-165 in old_map.tsx)
-const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
-  if (!user) {
-    console.log('User not logged in, skipping territory save');
-    return;
-  }
 
-  try {
-    const response = await fetch(
-      `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          coordinates: [loop],
-          area_sq_meters: areaM2,
-        }),
-      }
-    );
-
-    const result = await response.json();
-
-    if (result.success) {
-      console.log('Territory saved to database:', result.territory_id);
-      loadAllTerritories(); // This reloads from DB
-    } else {
-      console.warn('Failed to save territory:', result.error);
+  // Save or update territory in database
+  const saveTerritoryToDB = async (
+    loop: LatLng[], 
+    areaM2: number, 
+    isUpdate: boolean = false, // flag for update vs create
+    territoryIdToUpdate: string | null = null // which territory to update
+  ): Promise<string | null> => { // returns the territory_id or null
+    if (!user) {
+      console.log('User not logged in, skipping territory save');
+      return null;
     }
-  } catch (error) {
-    console.warn('Error saving territory:', error);
-  }
-};
+
+    try {
+      // If updating existing territory
+      if (isUpdate && territoryIdToUpdate) {
+        console.log('🔄 Updating territory in DB:', territoryIdToUpdate);
+        
+        // Get the CURRENT merged coordinates from territory state (not just the new loop)
+        const mergedCoords = extractCoordinatesFromTerritory(territory);
+        const mergedArea = totalAreaM2; // Use the total merged area
+        
+        const response = await fetch(
+          `${process.env.EXPO_PUBLIC_API_BASE}/territories/update`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              territory_id: territoryIdToUpdate,
+              coordinates: mergedCoords,
+              area_sq_meters: mergedArea,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          console.log('Territory updated in DB:', territoryIdToUpdate);
+          loadAllTerritories(); // Refresh the list
+          return territoryIdToUpdate; // Return the same ID
+        } else {
+          console.warn('Failed to update territory:', result.error);
+          // Fallback: create as new territory
+          console.log('Falling back to creating new territory');
+          return await saveTerritoryToDB(loop, areaM2, false, null);
+        }
+      } 
+      // Creating new territory
+      else {
+        console.log('Saving NEW territory to DB');
+        const response = await fetch(
+          `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              coordinates: [loop],
+              area_sq_meters: areaM2,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (result.success) {
+          const newTerritoryId = result.territory_id;
+          console.log('New territory saved to DB:', newTerritoryId);
+          loadAllTerritories(); // Refresh the list
+          return newTerritoryId; // Return the new ID
+        } else {
+          console.warn('Failed to save territory:', result.error);
+          return null;
+        }
+      }
+    } catch (error) {
+      console.warn('Error saving/updating territory:', error);
+      return null;
+    }
+  };
+
+  // Add this helper function to extract coordinates from territory state
+  const extractCoordinatesFromTerritory = (territory: TerritoryFeature | null): LatLng[][] => {
+    if (!territory || !territory.geometry) return [];
+    
+    const geom = territory.geometry;
+    
+    if (geom.type === 'Polygon') {
+      return [geom.coordinates[0].map(([lng, lat]) => ({
+        latitude: lat,
+        longitude: lng,
+      }))];
+    }
+    
+    if (geom.type === 'MultiPolygon') {
+      return geom.coordinates.map(poly => 
+        poly[0].map(([lng, lat]) => ({
+          latitude: lat,
+          longitude: lng,
+        }))
+      );
+    }
+    return [];
+  };
 
   // ---------- react to mask toggle ----------
 
@@ -1533,20 +1608,21 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
       perimeter: peri,
       area,
       hasTerritory: !!territory,
+      currentTerritoryId, // Log the current ID
     });
   
-    // First loop: always accept (Paper.io "initial island")
+    // First loop: always accept: a single island (can have multiple)
     if (!territory) {
       console.log('[loop] accepting as FIRST territory loop');
+      console.log('[loop] Calling saveTerritoryToDB...');
       
-      // Save to DB when it's the first territory (if not masked)
-      if (!maskLocation) {
-        console.log('[loop] Calling saveTerritoryToDB...');
-        saveTerritoryToDB(loop, area);
-      } else {
-        saveTerritoryToDB(loop, area);
-        console.log('[loop] Masked save for testing ONLY');
-      }
+      // Save new territory and store the ID
+      saveTerritoryToDB(loop, area, false, null).then((territoryId) => {
+        if (territoryId) {
+          setCurrentTerritoryId(territoryId);
+          console.log('[loop] Stored territory_id:', territoryId);
+        }
+      });
       
       return true;
     }
@@ -1561,9 +1637,9 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
       return false;
     }
   
-    // doesnt save merged territories to backend! it acts as separate entities but may change to updating in future
-    // The frontend will merge them visually, but we don't want duplicate DB records
-    console.log('[loop] Accepting but NOT saving to DB (will be merged locally)');
+    // ✅ ACCEPTED: This loop will merge with existing territory
+    console.log('[loop] Accepting for merge with existing territory');
+    console.log('[loop] Will update territory ID:', currentTerritoryId);
     
     return true;
   }
