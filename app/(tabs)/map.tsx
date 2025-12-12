@@ -348,26 +348,27 @@ export default function MapScreen() {
     })();
   }, [user?.user_id]);
 
-  // Save or update territory in database
-  const saveTerritoryToDB = async (
-    loop: LatLng[], 
-    areaM2: number, 
-    isUpdate: boolean = false, // flag for update vs create
-    territoryIdToUpdate: string | null = null // which territory to update
-  ): Promise<string | null> => { // returns the territory_id or null
-    if (!user) {
-      console.log('User not logged in, skipping territory save');
-      return null;
-    }
-
-    try {
-      // If updating existing territory
-      if (isUpdate && territoryIdToUpdate) {
-        console.log('🔄 Updating territory in DB:', territoryIdToUpdate);
-        
-        // Get the CURRENT merged coordinates from territory state (not just the new loop)
-        const mergedCoords = extractCoordinatesFromTerritory(territory);
-        const mergedArea = totalAreaM2; // Use the total merged area
+  
+    // helper functions 
+    const updateTerritoryInDB = async (
+      territoryId: string,
+      coordinates: LatLng[][],
+      areaM2: number
+    ): Promise<void> => {
+      if (!user) {
+        console.log('❌ User not logged in, skipping territory update');
+        return;
+      }
+    
+      try {
+        console.log('🔄 Updating territory in DB:', territoryId);
+        console.log('📐 Coordinates being sent:', {
+          territoryId,
+          polygonCount: coordinates.length,
+          vertices: coordinates[0]?.length || 0,
+          sample: coordinates[0]?.slice(0, 3),
+          areaM2,
+        });
         
         const response = await fetch(
           `${process.env.EXPO_PUBLIC_API_BASE}/territories/update`,
@@ -378,62 +379,30 @@ export default function MapScreen() {
             },
             credentials: 'include',
             body: JSON.stringify({
-              territory_id: territoryIdToUpdate,
-              coordinates: mergedCoords,
-              area_sq_meters: mergedArea,
-            }),
-          }
-        );
-
-        const result = await response.json();
-
-        if (result.success) {
-          console.log('Territory updated in DB:', territoryIdToUpdate);
-          loadAllTerritories(); // Refresh the list
-          return territoryIdToUpdate; // Return the same ID
-        } else {
-          console.warn('Failed to update territory:', result.error);
-          // Fallback: create as new territory
-          console.log('Falling back to creating new territory');
-          return await saveTerritoryToDB(loop, areaM2, false, null);
-        }
-      } 
-      // Creating new territory
-      else {
-        console.log('Saving NEW territory to DB');
-        const response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              coordinates: [loop],
+              territory_id: territoryId,
+              coordinates: coordinates,
               area_sq_meters: areaM2,
             }),
           }
         );
-
+    
         const result = await response.json();
-
+    
         if (result.success) {
-          const newTerritoryId = result.territory_id;
-          console.log('New territory saved to DB:', newTerritoryId);
-          loadAllTerritories(); // Refresh the list
-          return newTerritoryId; // Return the new ID
+          console.log('✅ Territory updated in DB:', territoryId);
+          
+          // Refresh ALL territories from database
+          loadAllTerritories();
+          
         } else {
-          console.warn('Failed to save territory:', result.error);
-          return null;
+          console.warn('❌ Failed to update territory:', result.error);
+          console.warn('Response:', result);
         }
+      } catch (error) {
+        console.warn('❌ Error updating territory:', error);
       }
-    } catch (error) {
-      console.warn('Error saving/updating territory:', error);
-      return null;
-    }
-  };
-
+    };
+  
   // Add this helper function to extract coordinates from territory state
   const extractCoordinatesFromTerritory = (territory: TerritoryFeature | null): LatLng[][] => {
     if (!territory || !territory.geometry) return [];
@@ -645,7 +614,7 @@ export default function MapScreen() {
     setSessions(next);
     sessionsRef.current = next;
     try {
-      await saveSessions(next);
+      await setSessions(next);
     } catch (error) {
       console.warn('failed to save raw sessions', error);
     }
@@ -781,7 +750,7 @@ export default function MapScreen() {
     return [];
   }
 
-  function mergeLoopIntoTerritory(loop: LatLng[]) {
+  async function mergeLoopIntoTerritory(loop: LatLng[]) {
     if (loop.length < 3) return;
   
     // LatLng[] → GeoJSON ring [ [lng, lat], ... ]
@@ -813,83 +782,226 @@ export default function MapScreen() {
         '[territory] setting FIRST loop, area m2 =',
         loopArea,
       );
-      setTerritory(loopPoly);
-      setTotalAreaM2(loopArea);
+      
+      // Save to database FIRST
+      const territoryId = await saveNewTerritoryToDB(loop, loopArea);
+      
+      if (territoryId) {
+        // Update state ONLY after successful save
+        setCurrentTerritoryId(territoryId);
+        setTerritory(loopPoly);
+        setTotalAreaM2(loopArea);
+        console.log('[territory] Stored new territory_id:', territoryId);
+      }
       return;
     }
-
-    // 🔹 Build an array of polygon features = existing + new loop
-    const polyFeatures: TerritoryFeature[] = [
-      ...existingPolys.map((p) =>
-        turf.polygon(p.coordinates) as TerritoryFeature,
-      ),
-      loopPoly,
-    ];
-
-    let acc: TerritoryFeature | null = null;
-
-    try {
-      const fc = featureCollection(
-        polyFeatures as any,
-      ) as any; // FeatureCollection<Polygon>
-      const dissolved = dissolve(fc as any) as any;
-
-      if (
-        dissolved &&
-        dissolved.features &&
-        dissolved.features.length > 0
-      ) {
-        acc = dissolved.features[0] as TerritoryFeature;
-      } else {
-        console.warn(
-          '[territory] dissolve returned no features, keeping previous territory',
-        );
+  
+    // 🔹 There IS existing territory → check connection
+    console.log('[territory] Checking connection...');
+    console.log('[territory] currentTerritoryId:', currentTerritoryId);
+    
+    // Fix the connection check function
+    const isConnected = await checkLoopConnection(loopPoly, territory);
+    
+    if (isConnected && currentTerritoryId) {
+      console.log('[territory] Loop is CONNECTED to current territory, merging...');
+      
+      // 🔹 Build an array of polygon features = existing + new loop
+      const polyFeatures: TerritoryFeature[] = [
+        ...existingPolys.map((p) =>
+          turf.polygon(p.coordinates) as TerritoryFeature,
+        ),
+        loopPoly,
+      ];
+  
+      let acc: TerritoryFeature | null = null;
+  
+      try {
+        const fc = featureCollection(polyFeatures as any) as any;
+        const dissolved = dissolve(fc as any) as any;
+  
+        if (dissolved?.features?.length > 0) {
+          acc = dissolved.features[0] as TerritoryFeature;
+        } else {
+          console.warn('[territory] dissolve returned no features');
+          return;
+        }
+      } catch (err) {
+        console.warn('[territory] dissolve failed:', err);
         return;
       }
-    } catch (err) {
-      console.warn(
-        '[territory] dissolve failed, keeping previous territory',
-        err,
-      );
-      return;
+  
+      if (!acc) return;
+  
+      const mergedArea = turf.area(acc as any);
+  
+      // safety: never let area shrink due to a bad dissolve
+      if (mergedArea + 1 < totalAreaM2) {
+        console.warn('[territory] merged area smaller than existing');
+        return;
+      }
+  
+      console.log('[territory] merged via dissolve, area =', mergedArea);
+  
+      //  Update the territory in database
+      const mergedCoords = extractCoordinatesFromTerritory(acc);
+      if (mergedCoords.length > 0) {
+        await updateTerritoryInDB(currentTerritoryId, mergedCoords, mergedArea);
+      }
+  
+      // Update local state
+      setTerritory(acc);
+      setTotalAreaM2(mergedArea);
+      
+    } else if (!currentTerritoryId) {
+      console.log('[territory] No territory ID found, saving as new...');
+      // This shouldn't happen if we saved properly, but just in case
+      const territoryId = await saveNewTerritoryToDB(loop, loopArea);
+      if (territoryId) {
+        setCurrentTerritoryId(territoryId);
+        setTerritory(loopPoly);
+        setTotalAreaM2(loopArea);
+      }
+    } else {
+      // Disconnected loop
+      console.log('[territory] Loop is DISCONNECTED, creating new island territory');
+      
+      const territoryId = await saveNewTerritoryToDB(loop, loopArea);
+      if (territoryId) {
+        console.log('[territory] Created new island territory:', territoryId);
+        // Optional: switch to showing this new territory
+        // setTerritory(loopPoly);
+        // setTotalAreaM2(loopArea);
+        // setCurrentTerritoryId(territoryId);
+      }
     }
-
-    if (!acc) return;
-
-    const mergedArea = turf.area(acc as any);
-
-    // safety: never let area shrink due to a bad dissolve
-    if (mergedArea + 1 < totalAreaM2) {
-      console.warn(
-        '[territory] merged area smaller than existing, ignoring this loop',
-        { prev: totalAreaM2, merged: mergedArea },
-      );
-      return;
-    }
-
-    console.log('[territory] merged via dissolve, area =', mergedArea);
-
-    console.log(
-      '[territory-debug] MERGED GEOM',
-      acc.geometry?.type,
-      acc.geometry?.type === 'Polygon'
-        ? (acc.geometry.coordinates[0] || [])
-            .slice(0, 10)
-            .map(([lng, lat]) => ({
-
-              lat: Number(lat.toFixed(6)),
-              lon: Number(lng.toFixed(6)),
-            }))
-        : acc.geometry?.type === 'MultiPolygon'
-        ? 'MultiPolygon with ' +
-          acc.geometry.coordinates.length +
-          ' parts'
-        : null,
-    );
-
-    setTerritory(acc);
-    setTotalAreaM2(mergedArea);
   }
+  
+  // connection check function
+  async function checkLoopConnection(loopPoly: TerritoryFeature, territory: TerritoryFeature | null): Promise<boolean> {
+    if (!territory) return false;
+    
+    try {
+      // Convert territory to proper GeoJSON for turf
+      const territoryCoords = extractCoordinatesFromTerritory(territory);
+      if (territoryCoords.length === 0) return false;
+      
+      // Create a proper polygon from territory coordinates
+      const territoryRing = territoryCoords[0].map((coord: LatLng) => 
+        [coord.longitude, coord.latitude] as [number, number]
+      );
+      
+      // Ensure closed ring
+      const first = territoryRing[0];
+      const last = territoryRing[territoryRing.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) {
+        territoryRing.push([...first]);
+      }
+      
+      const territoryPoly = turf.polygon([territoryRing]);
+      
+      // Now check distance properly
+      const distance = turf.distance(loopPoly, territoryPoly, { units: 'meters' });
+      const intersects = turf.booleanIntersects(loopPoly, territoryPoly);
+      
+      console.log('[connection-check]', {
+        distance: distance?.toFixed(2),
+        intersects,
+        threshold: '10m'
+      });
+      
+      return intersects || (distance !== undefined && distance < 10);
+    } catch (error) {
+      console.warn('[connection-check] Error:', error);
+      console.warn('Loop poly:', loopPoly);
+      console.warn('Territory:', territory);
+      return false;
+    }
+  }
+  
+  // Helper function to check against ALL territories in database
+  function findConnectedTerritoryFromDB(loopPoly: TerritoryFeature): { territory_id: string; distance: number } | null {
+    if (!user || allTerritories.length === 0) return null;
+    
+    let closestTerritory = null;
+    let minDistance = Infinity;
+    
+    for (const dbTerritory of allTerritories) {
+      // Only check user's own territories
+      if (dbTerritory.user_id !== user.user_id) continue;
+      
+      try {
+        // Convert DB territory to Turf polygon
+        const dbCoords = dbTerritory.coordinates[0];
+        const dbRing = dbCoords.map((coord: LatLng) => [coord.longitude, coord.latitude]) as [number, number][];
+        
+        // Ensure closed ring
+        const dbFirst = dbRing[0];
+        const dbLast = dbRing[dbRing.length - 1];
+        if (dbFirst[0] !== dbLast[0] || dbFirst[1] !== dbLast[1]) {
+          dbRing.push([...dbFirst]);
+        }
+        
+        const dbPoly = turf.polygon([dbRing]);
+        
+        // Check connection
+        const distance = turf.distance(loopPoly, dbPoly, { units: 'meters' });
+        const intersects = turf.booleanIntersects(loopPoly, dbPoly);
+        
+        const isConnected = intersects || (distance !== undefined && distance < 10);
+        
+        if (isConnected && distance !== undefined && distance < minDistance) {
+          minDistance = distance;
+          closestTerritory = {
+            territory_id: dbTerritory.territory_id,
+            distance: distance
+          };
+        }
+      } catch (error) {
+        console.warn(`Error checking territory ${dbTerritory.territory_id}:`, error);
+      }
+    }
+    
+    return closestTerritory;
+  }
+  
+  // Helper for creating new territories
+  const saveNewTerritoryToDB = async (
+    coordinates: LatLng[],
+    areaM2: number
+  ): Promise<string | null> => {
+    if (!user) return null;
+    
+    try {
+      console.log('📤 Saving NEW territory to DB');
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            coordinates: [coordinates], // Wrap in array
+            area_sq_meters: areaM2,
+          }),
+        }
+      );
+  
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ New territory saved to DB:', result.territory_id);
+        loadAllTerritories();
+        return result.territory_id;
+      } else {
+        console.warn( 'Failed to save territory:', result.error);
+        return null;
+      }
+    } catch (error) {
+      console.warn('Error saving territory:', error);
+      return null;
+    }
+  };
 
   // ---------- Paper.io cut logic (use existing territory edge as a side) ----------
 
@@ -1118,7 +1230,7 @@ export default function MapScreen() {
     }
     // 3) Re-entering territory → close the tail and merge
     else if (!wasInside && inside) {
-      console.log('[paperio] re-enter territory, closing tail');
+      console.log('re-enter territory, closing tail');
 
       if (tailRef.current.length >= 3) {
         const rawLoop = [...tailRef.current];
@@ -1466,7 +1578,7 @@ export default function MapScreen() {
       y: lastXY.y + dyMeters,
     };
     const next = toLatLng(nextXY);
-
+    /*
     console.log('[arrow] move', {
       from: {
         lat: Number(current.latitude.toFixed(6)),
@@ -1478,7 +1590,7 @@ export default function MapScreen() {
       },
       dxMeters,
       dyMeters,
-    });
+    });*/
 
     handleNewPoint(next, 5);
   };
@@ -1611,10 +1723,19 @@ export default function MapScreen() {
       currentTerritoryId, // Log the current ID
     });
   
+
+    
     // First loop: always accept: a single island (can have multiple)
     if (!territory) {
       console.log('[loop] accepting as FIRST territory loop');
-      console.log('[loop] Calling saveTerritoryToDB...');
+      // DON'T save here - let mergeLoopIntoTerritory handle it
+      return true;
+    }
+    
+    /*
+    if (!territory) {
+      //console.log('[loop] accepting as FIRST territory loop');
+      //console.log('[loop] Calling saveTerritoryToDB...');
       
       // Save new territory and store the ID
       saveTerritoryToDB(loop, area, false, null).then((territoryId) => {
@@ -1626,6 +1747,7 @@ export default function MapScreen() {
       
       return true;
     }
+    */
   
     // Later loops must be "big enough"
     if (peri < MIN_PERIMETER_M) {
@@ -1637,7 +1759,7 @@ export default function MapScreen() {
       return false;
     }
   
-    // ✅ ACCEPTED: This loop will merge with existing territory
+    // This loop will merge with existing territory
     console.log('[loop] Accepting for merge with existing territory');
     console.log('[loop] Will update territory ID:', currentTerritoryId);
     
@@ -1767,7 +1889,7 @@ export default function MapScreen() {
 
   function renderFriendTerritories() {
     if (!friendTerritories || friendTerritories.length === 0) {
-      console.log('No friend territories to render');
+      //console.log('No friend territories to render');
       return null;
     }
 
@@ -2059,6 +2181,7 @@ export default function MapScreen() {
               tailRef.current = [];
               setHasUnfinishedRide(false);
               resetCutState();
+              setCurrentTerritoryId(null); // resets the current territory id 
               
               try {
                 if (user?.user_id) {
