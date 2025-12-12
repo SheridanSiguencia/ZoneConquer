@@ -153,7 +153,7 @@ router.put('/update', auth, async (req, res) => {
       });
     }
 
-    console.log('🔄 Updating territory:', territory_id, 'for user:', userId, 'Area:', area_sq_meters);
+    console.log('Updating territory:', territory_id, 'for user:', userId, 'Area:', area_sq_meters);
 
     // Convert coordinates to PostGIS polygon format
     const polygonCoords = coordinates[0].map(coord => 
