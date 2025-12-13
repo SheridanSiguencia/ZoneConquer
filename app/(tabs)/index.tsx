@@ -19,7 +19,7 @@ export default function HomeScreen() {
 
   const onInvite = useCallback(async () => {
     try {
-      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' });
+      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.app' });
     } catch {} // eslint-disable-line
   }, []);
 
@@ -173,9 +173,9 @@ export default function HomeScreen() {
                 <Text style={styles.avatarText}>{n[0].toUpperCase()}</Text>
               </View>
             ))}
-            <View style={styles.friendPill}>
+            <Pressable style={styles.friendPill} onPress={() => console.log('Add friend pressed')}>
               <Text style={styles.friendPillText}>+ add</Text>
-            </View>
+            </Pressable>
           </View>
         </View>
   

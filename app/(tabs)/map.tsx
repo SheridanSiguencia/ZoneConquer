@@ -1313,7 +1313,6 @@ export default function MapScreen() {
     }
 
     ensureSessionStarted();
-    setHasUnfinishedRide(false);
     setIsTracking(true);
 
     watchRef.current = await Location.watchPositionAsync(
