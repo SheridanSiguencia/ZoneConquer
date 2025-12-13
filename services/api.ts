@@ -222,7 +222,6 @@ export const userAPI = {
       weekly_goal: Number(result.weekly_goal) || 15,
     };
   },
-  /*
   async updateDistance(
     distanceMiles: number,
   ): Promise<{ success: boolean; stats: UserStats }> {
@@ -261,7 +260,6 @@ export const userAPI = {
     console.log('✅ API: updateDistance success:', result);
     return result;
   },
-*/
   async checkStreak(): Promise<{ success: boolean; stats: UserStats }> {
     const response = await fetch(`${API_BASE}/user/check-streak`, {
       method: 'POST',
