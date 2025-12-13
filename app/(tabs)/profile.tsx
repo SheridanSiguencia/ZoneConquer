@@ -194,6 +194,20 @@ export default function ProfileScreen() {
               <Text style={styles.actionTextPrimary}>Invite Friends</Text>
             </Pressable>
 
+            <Link href="/pending-requests" asChild>
+              <Pressable style={[styles.actionBtn, styles.outline]}>
+                <Ionicons name="mail-outline" size={18} color={Colors.light.secondary} />
+                <Text style={styles.actionTextOutline}>Pending Requests</Text>
+              </Pressable>
+            </Link>
+
+            <Link href="/friends-list" asChild>
+              <Pressable style={[styles.actionBtn, styles.outline]}>
+                <Ionicons name="people-outline" size={18} color={Colors.light.secondary} />
+                <Text style={styles.actionTextOutline}>My Friends</Text>
+              </Pressable>
+            </Link>
+
             <Pressable
               style={[styles.actionBtn, styles.outline]}
               onPress={onLogout}

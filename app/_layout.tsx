@@ -32,6 +32,9 @@ export default function RootLayout() {
       <Stack.Screen name="login" />
       <Stack.Screen name="signup" />
       <Stack.Screen name="forgot-password" />
+      <Stack.Screen name="add-friend" />
+      <Stack.Screen name="pending-requests" />
+      <Stack.Screen name="friends-list" />
 
       {/* main app (tabs group keeps its own headers) */}
       <Stack.Screen name="(tabs)" />
