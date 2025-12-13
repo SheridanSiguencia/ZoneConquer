@@ -216,7 +216,7 @@ router.post('/request-password-reset', async (req, res) => {
     );
 
     // 4. Send the email (placeholder)
-    const resetLink = `YOUR_APP_FRONTEND_URL/reset-password?token=${resetToken}`;
+    const resetLink = `/reset-password?token=${resetToken}`;
     console.log(`Password reset link for ${email}: ${resetLink}`);
     // TODO: Integrate with an actual email sending service (e.g., Nodemailer, SendGrid)
     // await sendEmail({
@@ -252,8 +252,4 @@ const auth = (req, res, next) => {
   });
 };
 
-// ✅ Export both the router AND the auth middleware
-module.exports = {
-  router: router,
-  auth: auth
-};
+module.exports = router;
