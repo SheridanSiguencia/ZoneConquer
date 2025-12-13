@@ -369,6 +369,45 @@ export const territoryAPI = {
     const result = await response.json();
     return result.territories;
   },
+
+  async saveTerritory(coordinates: LatLng[][], areaM2: number): Promise<{ success: boolean, territory_id: string }> {
+    const response = await fetch(`${API_BASE}/territories/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        coordinates,
+        area_sq_meters: areaM2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save territory');
+    }
+
+    return await response.json();
+  },
+
+  async updateTerritory(territoryId: string, coordinates: LatLng[][], areaM2: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/territories/update`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        territory_id: territoryId,
+        coordinates,
+        area_sq_meters: areaM2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update territory');
+    }
+
+    return await response.json();
+  },
 };
 
 // friendsAPI object

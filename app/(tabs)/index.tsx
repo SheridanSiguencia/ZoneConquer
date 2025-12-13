@@ -192,7 +192,7 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
   
-          <Link href='/(tabs)/two' asChild>
+          <Link href='/(tabs)/profile' asChild>
             <Pressable
               style={[styles.tile, styles.tilePurple]}
               android_ripple={{ color: 'rgba(255,255,255,0.08)' }}

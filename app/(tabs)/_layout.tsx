@@ -130,9 +130,9 @@ export default function TabLayout() {
         }}
       />
 
-      {/* profile tab (two.tsx) */}
+      {/* profile tab (profile.tsx) */}
       <Tabs.Screen
-        name="two"
+        name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (

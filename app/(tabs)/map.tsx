@@ -235,23 +235,9 @@ export default function MapScreen() {
   
     try {
       console.log('🌐 Fetching territories from API...');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-  
-      const result = await response.json();
-  
-      if (result.success) {
-        console.log('✅ Setting territories to state:', result.territories.length);
-        setAllTerritories(result.territories);
-      } else {
-        console.warn('API error:', result.error);
-      }
+      const territories = await territoryAPI.getHistory();
+      console.log('✅ Setting territories to state:', territories.length);
+      setAllTerritories(territories);
     } catch (error) {
       console.warn('Fetch error:', error);
     }
@@ -362,31 +348,7 @@ export default function MapScreen() {
     
       try {
         console.log('🔄 Updating territory in DB:', territoryId);
-        console.log('📐 Coordinates being sent:', {
-          territoryId,
-          polygonCount: coordinates.length,
-          vertices: coordinates[0]?.length || 0,
-          sample: coordinates[0]?.slice(0, 3),
-          areaM2,
-        });
-        
-        const response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_BASE}/territories/update`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              territory_id: territoryId,
-              coordinates: coordinates,
-              area_sq_meters: areaM2,
-            }),
-          }
-        );
-    
-        const result = await response.json();
+        const result = await territoryAPI.updateTerritory(territoryId, coordinates, areaM2);
     
         if (result.success) {
           console.log('✅ Territory updated in DB:', territoryId);
@@ -904,20 +866,7 @@ export default function MapScreen() {
     
     try {
       console.log('📤 Saving NEW territory to DB');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            coordinates: [coordinates], // Wrap in array
-            area_sq_meters: areaM2,
-          }),
-        }
-      );
-  
-      const result = await response.json();
+      const result = await territoryAPI.saveTerritory([coordinates], areaM2);
       
       if (result.success) {
         console.log('✅ New territory saved to DB:', result.territory_id);

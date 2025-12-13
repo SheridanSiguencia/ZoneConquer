@@ -49,7 +49,7 @@ export default function ProfileScreen() {
     try {
       await Share.share({
         message:
-          'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example',
+          'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.app',
       });
     } catch {
       // ignore share errors for now
