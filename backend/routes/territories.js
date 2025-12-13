@@ -186,7 +186,7 @@ router.put('/update', auth, async (req, res) => {
     res.json({
       success: true,
       territory_id: result.rows[0].territory_id,
-      // update the time the polygon was created 
+      // update the time the polygon was updated 
       created_at: result.rows[0].created_at
     });
   } catch (error) {
