@@ -212,13 +212,16 @@ export const userAPI = {
 
 
     const result = await response.json();
+    // NOTE: Unit mismatch fix. The backend returns distance in meters, but the frontend expects miles.
+    // Converting meters to miles (1 meter = 0.000621371 miles).
+    const METERS_TO_MILES = 0.000621371;
     return {
       ...result,
       user_id: result.user_id,
       territories_owned: Number(result.territories_owned) || 0,
       current_streak: Number(result.current_streak) || 0,
-      today_distance: Number(result.today_distance) || 0, // FIX THIS
-      weekly_distance: Number(result.weekly_distance) || 0, // FIX THIS
+      today_distance: (Number(result.today_distance) * METERS_TO_MILES) || 0, 
+      weekly_distance: (Number(result.weekly_distance) * METERS_TO_MILES) || 0, 
       weekly_goal: Number(result.weekly_goal) || 15,
     };
   },
