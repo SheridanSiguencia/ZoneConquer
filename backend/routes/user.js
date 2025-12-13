@@ -1,6 +1,48 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const multer = require('multer');
+
+// Set up multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+
+router.post('/profile-picture', upload.single('profilePicture'), async (req, res) => {
+  try {
+    const userId = req.session.user_id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded.' });
+    }
+
+    const profilePictureUrl = req.file.path;
+
+    // Update user in the database
+    const result = await pool.query(
+      `UPDATE users SET profile_picture_url = $1 WHERE user_id = $2 RETURNING profile_picture_url`,
+      [profilePictureUrl, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, profile: { profile_picture_url: result.rows[0].profile_picture_url } });
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    res.status(500).json({ success: false, error: 'Failed to upload profile picture.' });
+  }
+});
 
 router.get('/stats', async (req, res) => {
   try {

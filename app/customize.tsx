@@ -1,4 +1,3 @@
-// app/customize.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router } from 'expo-router';
 import { useState, useEffect } from "react";
@@ -11,16 +10,19 @@ import {
     View,
     ActivityIndicator,
     Alert,
+    Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUserStore } from '../store/user';
 import Colors from '../constants/Colors';
 import { userAPI } from '../services/api';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function CustomizeScreen() {
     const { profile, fetchUserProfile } = useUserStore();
     const [name, setName] = useState(profile?.username || '');
     const [email, setEmail] = useState(profile?.email || '');
+    const [image, setImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -30,9 +32,47 @@ export default function CustomizeScreen() {
         }
     }, [profile]);
 
+    const pickImage = async () => {
+        // No permissions request is necessary for launching the image library
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+        });
+
+        if (!result.canceled) {
+            setImage(result.assets[0].uri);
+        }
+    };
+
     const onSave = async () => {
         setLoading(true);
         try {
+            if (image) {
+                const formData = new FormData();
+                formData.append('profilePicture', {
+                    uri: image,
+                    name: 'profile.jpg',
+                    type: 'image/jpeg',
+                } as any);
+
+                const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE}/user/profile-picture`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    Alert.alert('Error', result.error || 'Failed to upload profile picture.');
+                    setLoading(false);
+                    return;
+                }
+            }
+
             // Call API to update profile
             const result = await userAPI.updateProfile({ username: name, email });
             if (result.success) {
@@ -62,10 +102,14 @@ export default function CustomizeScreen() {
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Profile Picture</Text>
                     <View style={styles.avatarContainer}>
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <Pressable style={styles.changeAvatarButton}>
+                        {image ? (
+                            <Image source={{ uri: image }} style={styles.avatar} />
+                        ) : (
+                            <View style={styles.avatar}>
+                                <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                            </View>
+                        )}
+                        <Pressable style={styles.changeAvatarButton} onPress={pickImage}>
                             <Text style={styles.changeAvatarText}>Change</Text>
                         </Pressable>
                     </View>
