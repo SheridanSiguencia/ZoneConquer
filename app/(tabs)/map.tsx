@@ -21,9 +21,9 @@ import MapView, {
   Polyline,
 } from 'react-native-maps';
 
-import { friendsAPI, FriendTerritory } from '@/services/api';
-import { useFocusEffect } from '@react-navigation/native';
 import { useUserStore } from '../../store/user';
+import { useFocusEffect } from '@react-navigation/native';
+import { friendsAPI, FriendTerritory } from '@/services/api';
 
 import type {
   Feature,
@@ -35,28 +35,6 @@ import type {
 type LatLng = { latitude: number; longitude: number };
 type XY = { x: number; y: number };
 type TerritoryFeature = Feature<GeoPolygon | MultiPolygon>;
-
-// Raw path / session types (local copy to satisfy TS)
-type PathPoint = {
-  lat: number;
-  lng: number;
-  t: number; // timestamp (ms since epoch)
-};
-
-type LoopSummary = {
-  id: string;
-  closedAt: number;
-  areaSqMeters: number;
-};
-
-type WalkSession = {
-  id: string;
-  startedAt: number;
-  endedAt: number | null;
-  points: PathPoint[];
-  loops: LoopSummary[];
-};
-
 
 // thresholds for what counts as a "real" loop
 const MIN_PERIMETER_M = 80;
@@ -114,8 +92,7 @@ export default function MapScreen() {
     );
   }, []);
   // using zustand
-  //const { user, fetchUserStats, updateDistance, stats } = useUserStore();
-  const { user } = useUserStore(); // only need user for this file
+  const { user, fetchUserStats, updateDistance, stats } = useUserStore();
   const [current, setCurrent] = useState<LatLng | null>(null);
 
   const [allTerritories, setAllTerritories] = useState<{
@@ -1228,7 +1205,7 @@ export default function MapScreen() {
     const t = Date.now();
     let accepted = false;
     const prevForCut = current;
-  
+
     setCurrent(p);
     setPath((prev) => {
       if (prev.length === 0) {
@@ -1236,24 +1213,24 @@ export default function MapScreen() {
         accepted = true;
         return [p];
       }
-  
+
       const last = prev[prev.length - 1];
       const delta = haversineMeters(last, p);
-  
+
       const badAccuracy = accuracy > 50;
       const tooSmall = delta < 3; // jitter
       const tooLarge = delta > 200; // spikes
-  
+
       if (!badAccuracy && !tooSmall && !tooLarge) {
         const xy = toXY(p);
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
-  
+
         // try to close a self-loop (path-only)
         const closure = findClosure(xyRef.current);
         if (closure) {
           const loop = buildLoopLatLng(closure);
-  
+
           console.log('[loop-debug] CLOSURE', {
             type: closure.type,
             startIdx: closure.startIdx,
@@ -1264,58 +1241,55 @@ export default function MapScreen() {
             },
             xyLength: xyRef.current.length,
           });
-  
+
           console.log(
             '[loop-debug] LOOP LATLNG',
             loop.map((pt, idx) => ({
+
               i: idx,
               lat: Number(pt.latitude.toFixed(6)),
               lon: Number(pt.longitude.toFixed(6)),
             })),
           );
-  
+
           if (validateLoop(loop)) {
             const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
             addLoopSummary(areaM2);
-  
+
             console.log(
               '[loop-debug] BEFORE MERGE path length',
               xyRef.current.length,
             );
-  
-            // MERGE THE LOOP
+
             mergeLoopIntoTerritory(loop);
-  
-            // Reset path to ONLY current point
-            xyRef.current = [toXY(p)]; // Reset XY array
-            
-            // Don't return [...prev, p] - return just [p]
+
+            // ✅ keep full path so future loops can reuse old sides
+            setLoops((prevLoops) => [...prevLoops, loop]);
             accepted = true;
-            return [p]; // ← ONLY current point!
+            return [...prev, p];
           }
         }
-  
+
         accepted = true;
         return [...prev, p];
       }
-  
+
       return prev;
     });
-  
+
     if (accepted) {
       ensureSessionStarted();
       appendRawPoint(p, t);
-  
-      // leave territory, wander, re-enter
+
+      // ✅ Paper.io tail logic: leave territory, wander, re-enter
       applyPaperIoTailLogic(p);
-  
-      // cut detection (loops that use existing territory edge)
+
+      // ✅ Paper.io cut detection (loops that use existing territory edge)
       if (prevForCut && territory) {
         processPaperCut(prevForCut, p);
       }
     }
   };
-  
 
   // ---------- GPS tracking ----------
 
@@ -1843,7 +1817,7 @@ export default function MapScreen() {
     return null;
   }
 
-   function renderFriendTerritories() {
+  function renderFriendTerritories() {
     if (!friendTerritories || friendTerritories.length === 0) {
       //console.log('No friend territories to render');
       return null;
@@ -1851,31 +1825,17 @@ export default function MapScreen() {
 
     return friendTerritories.map((territory, index) => {
       try {
-        // Friend territories come from the backend as LatLng[][]
-        // outer array = rings, inner array = LatLng points
-        const rings = territory.coordinates as LatLng[][];
-
-        if (!Array.isArray(rings) || rings.length === 0) {
-          return null;
-        }
-
-        // For now we just draw the outer ring
-        const outerRing = rings[0] as LatLng[];
-
-        if (!Array.isArray(outerRing) || outerRing.length < 3) {
-          return null;
-        }
-
-        // Explicitly tell TS every element is a LatLng
-        const coords: LatLng[] = outerRing.map((coord: LatLng) => ({
-          latitude: coord.latitude,
-          longitude: coord.longitude,
-        }));
-
+        // Friend territories might have nested coordinates array
+        const coordinates = territory.coordinates[0] || territory.coordinates;
+        const flatCoords = coordinates.flat();
+        
         return (
           <MapPolygon
             key={`friend-${territory.territory_id}-${index}`}
-            coordinates={coords}
+            coordinates={flatCoords.map(coord => ({
+              latitude: coord.latitude,
+              longitude: coord.longitude,
+            }))}
             fillColor="rgba(255, 105, 180, 0.2)"  // Pink for friends
             strokeColor="rgba(255, 105, 180, 0.7)"
             strokeWidth={1.5}
@@ -1888,9 +1848,6 @@ export default function MapScreen() {
       }
     });
   }
-
-
-
   return (
     <View style={{ flex: 1 }}>
       <MapView
