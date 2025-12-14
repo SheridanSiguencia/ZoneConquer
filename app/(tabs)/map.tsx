@@ -21,9 +21,9 @@ import MapView, {
   Polyline,
 } from 'react-native-maps';
 
-import { useUserStore } from '../../store/user';
-import { useFocusEffect } from '@react-navigation/native';
 import { friendsAPI, FriendTerritory } from '@/services/api';
+import { useFocusEffect } from '@react-navigation/native';
+import { useUserStore } from '../../store/user';
 
 import type {
   Feature,
@@ -35,6 +35,28 @@ import type {
 type LatLng = { latitude: number; longitude: number };
 type XY = { x: number; y: number };
 type TerritoryFeature = Feature<GeoPolygon | MultiPolygon>;
+
+// Raw path / session types (local copy to satisfy TS)
+type PathPoint = {
+  lat: number;
+  lng: number;
+  t: number; // timestamp (ms since epoch)
+};
+
+type LoopSummary = {
+  id: string;
+  closedAt: number;
+  areaSqMeters: number;
+};
+
+type WalkSession = {
+  id: string;
+  startedAt: number;
+  endedAt: number | null;
+  points: PathPoint[];
+  loops: LoopSummary[];
+};
+
 
 // thresholds for what counts as a "real" loop
 const MIN_PERIMETER_M = 80;
@@ -92,7 +114,8 @@ export default function MapScreen() {
     );
   }, []);
   // using zustand
-  const { user, fetchUserStats, updateDistance, stats } = useUserStore();
+  //const { user, fetchUserStats, updateDistance, stats } = useUserStore();
+  const { user } = useUserStore(); // only need user for this file
   const [current, setCurrent] = useState<LatLng | null>(null);
 
   const [allTerritories, setAllTerritories] = useState<{
@@ -1820,7 +1843,7 @@ export default function MapScreen() {
     return null;
   }
 
-  function renderFriendTerritories() {
+   function renderFriendTerritories() {
     if (!friendTerritories || friendTerritories.length === 0) {
       //console.log('No friend territories to render');
       return null;
@@ -1828,17 +1851,31 @@ export default function MapScreen() {
 
     return friendTerritories.map((territory, index) => {
       try {
-        // Friend territories might have nested coordinates array
-        const coordinates = territory.coordinates[0] || territory.coordinates;
-        const flatCoords = coordinates.flat();
-        
+        // Friend territories come from the backend as LatLng[][]
+        // outer array = rings, inner array = LatLng points
+        const rings = territory.coordinates as LatLng[][];
+
+        if (!Array.isArray(rings) || rings.length === 0) {
+          return null;
+        }
+
+        // For now we just draw the outer ring
+        const outerRing = rings[0] as LatLng[];
+
+        if (!Array.isArray(outerRing) || outerRing.length < 3) {
+          return null;
+        }
+
+        // Explicitly tell TS every element is a LatLng
+        const coords: LatLng[] = outerRing.map((coord: LatLng) => ({
+          latitude: coord.latitude,
+          longitude: coord.longitude,
+        }));
+
         return (
           <MapPolygon
             key={`friend-${territory.territory_id}-${index}`}
-            coordinates={flatCoords.map(coord => ({
-              latitude: coord.latitude,
-              longitude: coord.longitude,
-            }))}
+            coordinates={coords}
             fillColor="rgba(255, 105, 180, 0.2)"  // Pink for friends
             strokeColor="rgba(255, 105, 180, 0.7)"
             strokeWidth={1.5}
@@ -1851,6 +1888,9 @@ export default function MapScreen() {
       }
     });
   }
+
+
+
   return (
     <View style={{ flex: 1 }}>
       <MapView

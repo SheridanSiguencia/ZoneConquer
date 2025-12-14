@@ -1,7 +1,7 @@
 // store/user.ts
 // store/user.ts
-import { create } from 'zustand'; 
-import { userAPI, gamificationAPI, authAPI, User, UserStats, UserProfile, Achievement, Challenge, UserAchievement, UserChallenge } from '../services/api';
+import { create } from 'zustand';
+import { Achievement, authAPI, Challenge, gamificationAPI, User, UserAchievement, userAPI, UserChallenge, UserProfile, UserStats } from '../services/api';
 
 // Define the state shape for the user store
 interface UserState {
@@ -21,7 +21,8 @@ interface UserState {
   fetchAchievements: () => void; // Action to fetch all achievements
   fetchChallenges: () => void; // Action to fetch all challenges
   fetchUserProgress: () => void; // Action to fetch user's progress on gamification
-  updateDistance: (distanceMiles: number) => Promise<{ success: boolean; stats: UserStats }>; 
+  //updateDistance: (distanceMiles: number) => Promise<{ success: boolean; stats: UserStats }>; 
+  //temporarily commented out until api is fixed ^^
   updateProfile: (profileData: { username: string; email: string }) => Promise<void>;
 }
 
@@ -127,7 +128,7 @@ export const useUserStore = create<UserState>((set) => ({
     }
   },
 
-  updateDistance: async (distanceMiles) => {
+  updateDistance: async (distanceMiles: number) => { 
     set({ loading: true, error: null });
     try {
       const result = await userAPI.updateDistance(distanceMiles);
