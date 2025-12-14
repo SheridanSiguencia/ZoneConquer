@@ -226,7 +226,7 @@ export default function MapScreen() {
   };
 
   const loadAllTerritories = async () => {
-    console.log('🔄 loadAllTerritories CALLED');
+    console.log('loadAllTerritories CALLED');
   
     if (!user) {
       console.log('❌ No user in loadAllTerritories');
@@ -234,7 +234,7 @@ export default function MapScreen() {
     }
   
     try {
-      console.log('🌐 Fetching territories from API...');
+      console.log('Fetching territories from API...');
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
         {
@@ -259,7 +259,7 @@ export default function MapScreen() {
 
   const fetchFriendTerritories = async () => {
     try {
-      console.log('📡 Fetching friend territories...');
+      console.log('Fetching friend territories...');
       const territories = await friendsAPI.getFriendsTerritories();
       console.log('✅ Friend territories fetched:', territories.length);
       setFriendTerritories(territories);
@@ -857,6 +857,7 @@ export default function MapScreen() {
 
   // connection check function
   async function checkLoopConnection(loopPoly: TerritoryFeature): Promise<{territoryId: string | null, connected: boolean}> {
+    console.log('Calling CHECKLOOPCONNECTION');
     if (!user || allTerritories.length === 0) {
       return {territoryId: null, connected: false};
     }
@@ -903,7 +904,7 @@ export default function MapScreen() {
     if (!user) return null;
     
     try {
-      console.log('📤 Saving NEW territory to DB');
+      console.log('Saving NEW territory to DB');
       const response = await fetch(
         `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
         {
@@ -936,6 +937,7 @@ export default function MapScreen() {
   // ---------- Paper.io cut logic (use existing territory edge as a side) ----------
 
   function processPaperCut(prev: LatLng, curr: LatLng) {
+    console.log('Calling processPaperCut');
     if (!territory || !territory.geometry) {
       resetCutState();
       return;
