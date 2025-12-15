@@ -1,25 +1,43 @@
-// app/(tabs)/index.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View, ActivityIndicator, RefreshControl } from 'react-native';
 import { useUserStore } from '../../store/user';
-import { useFocusEffect } from 'expo-router'; // Add this import
-
+import { useFocusEffect } from 'expo-router';
+import { friendsAPI, Friend } from '../../services/api'; // Import Friend interface
 
 export default function HomeScreen() {
   const { stats, loading, error, fetchUserStats } = useUserStore();
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(true);
+
+  const fetchFriends = useCallback(async () => {
+    setLoadingFriends(true);
+    try {
+      const result = await friendsAPI.getFriends();
+      if (result.success) {
+        setFriends(result.friends);
+      } else {
+        console.error('Failed to fetch friends:', result.error);
+      }
+    } catch (err) {
+      console.error('Error fetching friends:', err);
+    } finally {
+      setLoadingFriends(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('🏠 Home screen focused, refreshing stats');
+      console.log('🏠 Home screen focused, refreshing stats and friends');
       fetchUserStats();
-    }, [fetchUserStats])
+      fetchFriends();
+    }, [fetchUserStats, fetchFriends])
   );
 
   const onInvite = useCallback(async () => {
     try {
-      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example' });
+      await Share.share({ message: 'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.app' });
     } catch {} // eslint-disable-line
   }, []);
 
@@ -64,7 +82,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.container} 
         showsVerticalScrollIndicator={false}
         refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={fetchUserStats} tintColor="#e5e7eb" />
+            <RefreshControl refreshing={loading || loadingFriends} onRefresh={() => { fetchUserStats(); fetchFriends(); }} tintColor="#e5e7eb" />
         }
       >
         {/* header row */}
@@ -159,23 +177,32 @@ export default function HomeScreen() {
           </View>
   
           <View style={styles.friendsRow}>
-            {['sofia', 'elijah', 'jasmine', 'you', 'olivia'].map((n, i) => (
-              <View
-                key={n}
-                style={[
-                  styles.avatar,
-                  {
-                    marginLeft: i === 0 ? 0 : -10,
-                    backgroundColor: i === 3 ? '#22c55e' : '#0b2',
-                  },
-                ]}
-              >
-                <Text style={styles.avatarText}>{n[0].toUpperCase()}</Text>
-              </View>
-            ))}
-            <View style={styles.friendPill}>
-              <Text style={styles.friendPillText}>+ add</Text>
-            </View>
+            {loadingFriends ? (
+              <ActivityIndicator size="small" color="#e5e7eb" />
+            ) : friends.length > 0 ? (
+              friends.slice(0, 4).map((friend, i) => ( // Display up to 4 friends
+                <View
+                  key={friend.user_id}
+                  style={[
+                    styles.avatar,
+                    {
+                      marginLeft: i === 0 ? 0 : -10,
+                      backgroundColor: '#0b2', // Generic color for friends
+                    },
+                  ]}
+                >
+                  <Text style={styles.avatarText}>{friend.username[0].toUpperCase()}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noFriendsText}>No friends yet.</Text>
+            )}
+            <Link href='/add-friend' asChild>
+              <Pressable style={styles.friendPill}>
+                <Ionicons name="person-add" size={14} color="#111827" />
+                <Text style={styles.friendPillText}>add</Text>
+              </Pressable>
+            </Link>
           </View>
         </View>
   
@@ -192,7 +219,7 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
   
-          <Link href='/(tabs)/two' asChild>
+          <Link href='/(tabs)/profile' asChild>
             <Pressable
               style={[styles.tile, styles.tilePurple]}
               android_ripple={{ color: 'rgba(255,255,255,0.08)' }}

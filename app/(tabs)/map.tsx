@@ -226,7 +226,7 @@ export default function MapScreen() {
   };
 
   const loadAllTerritories = async () => {
-    console.log('loadAllTerritories CALLED');
+    console.log('🔄 loadAllTerritories CALLED');
   
     if (!user) {
       console.log('❌ No user in loadAllTerritories');
@@ -234,24 +234,10 @@ export default function MapScreen() {
     }
   
     try {
-      console.log('Fetching territories from API...');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/my-territories`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-  
-      const result = await response.json();
-  
-      if (result.success) {
-        console.log('✅ Setting territories to state:', result.territories.length);
-        setAllTerritories(result.territories);
-      } else {
-        console.warn('API error:', result.error);
-      }
+      console.log('🌐 Fetching territories from API...');
+      const territories = await territoryAPI.getHistory();
+      console.log('✅ Setting territories to state:', territories.length);
+      setAllTerritories(territories);
     } catch (error) {
       console.warn('Fetch error:', error);
     }
@@ -259,7 +245,7 @@ export default function MapScreen() {
 
   const fetchFriendTerritories = async () => {
     try {
-      console.log('Fetching friend territories...');
+      console.log('📡 Fetching friend territories...');
       const territories = await friendsAPI.getFriendsTerritories();
       console.log('✅ Friend territories fetched:', territories.length);
       setFriendTerritories(territories);
@@ -362,31 +348,7 @@ export default function MapScreen() {
     
       try {
         console.log('🔄 Updating territory in DB:', territoryId);
-        console.log('📐 Coordinates being sent:', {
-          territoryId,
-          polygonCount: coordinates.length,
-          vertices: coordinates[0]?.length || 0,
-          sample: coordinates[0]?.slice(0, 3),
-          areaM2,
-        });
-        
-        const response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_BASE}/territories/update`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              territory_id: territoryId,
-              coordinates: coordinates,
-              area_sq_meters: areaM2,
-            }),
-          }
-        );
-    
-        const result = await response.json();
+        const result = await territoryAPI.updateTerritory(territoryId, coordinates, areaM2);
     
         if (result.success) {
           console.log('✅ Territory updated in DB:', territoryId);
@@ -857,7 +819,6 @@ export default function MapScreen() {
 
   // connection check function
   async function checkLoopConnection(loopPoly: TerritoryFeature): Promise<{territoryId: string | null, connected: boolean}> {
-    console.log('Calling CHECKLOOPCONNECTION');
     if (!user || allTerritories.length === 0) {
       return {territoryId: null, connected: false};
     }
@@ -904,21 +865,8 @@ export default function MapScreen() {
     if (!user) return null;
     
     try {
-      console.log('Saving NEW territory to DB');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            coordinates: [coordinates], // Wrap in array
-            area_sq_meters: areaM2,
-          }),
-        }
-      );
-  
-      const result = await response.json();
+      console.log('📤 Saving NEW territory to DB');
+      const result = await territoryAPI.saveTerritory([coordinates], areaM2);
       
       if (result.success) {
         console.log('✅ New territory saved to DB:', result.territory_id);
@@ -937,7 +885,6 @@ export default function MapScreen() {
   // ---------- Paper.io cut logic (use existing territory edge as a side) ----------
 
   function processPaperCut(prev: LatLng, curr: LatLng) {
-    console.log('Calling processPaperCut');
     if (!territory || !territory.geometry) {
       resetCutState();
       return;
@@ -1207,7 +1154,7 @@ export default function MapScreen() {
     const t = Date.now();
     let accepted = false;
     const prevForCut = current;
-
+  
     setCurrent(p);
     setPath((prev) => {
       if (prev.length === 0) {
@@ -1215,24 +1162,24 @@ export default function MapScreen() {
         accepted = true;
         return [p];
       }
-
+  
       const last = prev[prev.length - 1];
       const delta = haversineMeters(last, p);
-
+  
       const badAccuracy = accuracy > 50;
       const tooSmall = delta < 3; // jitter
       const tooLarge = delta > 200; // spikes
-
+  
       if (!badAccuracy && !tooSmall && !tooLarge) {
         const xy = toXY(p);
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
-
+  
         // try to close a self-loop (path-only)
         const closure = findClosure(xyRef.current);
         if (closure) {
           const loop = buildLoopLatLng(closure);
-
+  
           console.log('[loop-debug] CLOSURE', {
             type: closure.type,
             startIdx: closure.startIdx,
@@ -1243,55 +1190,58 @@ export default function MapScreen() {
             },
             xyLength: xyRef.current.length,
           });
-
+  
           console.log(
             '[loop-debug] LOOP LATLNG',
             loop.map((pt, idx) => ({
-
               i: idx,
               lat: Number(pt.latitude.toFixed(6)),
               lon: Number(pt.longitude.toFixed(6)),
             })),
           );
-
+  
           if (validateLoop(loop)) {
             const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
             addLoopSummary(areaM2);
-
+  
             console.log(
               '[loop-debug] BEFORE MERGE path length',
               xyRef.current.length,
             );
-
+  
+            // MERGE THE LOOP
             mergeLoopIntoTerritory(loop);
-
-            // ✅ keep full path so future loops can reuse old sides
-            setLoops((prevLoops) => [...prevLoops, loop]);
+  
+            // Reset path to ONLY current point
+            xyRef.current = [toXY(p)]; // Reset XY array
+            
+            // Don't return [...prev, p] - return just [p]
             accepted = true;
-            return [...prev, p];
+            return [p]; // ← ONLY current point!
           }
         }
-
+  
         accepted = true;
         return [...prev, p];
       }
-
+  
       return prev;
     });
-
+  
     if (accepted) {
       ensureSessionStarted();
       appendRawPoint(p, t);
-
-      // ✅ Paper.io tail logic: leave territory, wander, re-enter
+  
+      // leave territory, wander, re-enter
       applyPaperIoTailLogic(p);
-
-      // ✅ Paper.io cut detection (loops that use existing territory edge)
+  
+      // cut detection (loops that use existing territory edge)
       if (prevForCut && territory) {
         processPaperCut(prevForCut, p);
       }
     }
   };
+  
 
   // ---------- GPS tracking ----------
 
@@ -1312,7 +1262,6 @@ export default function MapScreen() {
     }
 
     ensureSessionStarted();
-    setHasUnfinishedRide(false);
     setIsTracking(true);
 
     watchRef.current = await Location.watchPositionAsync(

@@ -1,6 +1,48 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const multer = require('multer');
+
+// Set up multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage: storage });
+
+router.post('/profile-picture', upload.single('profilePicture'), async (req, res) => {
+  try {
+    const userId = req.session.user_id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded.' });
+    }
+
+    const profilePictureUrl = req.file.path;
+
+    // Update user in the database
+    const result = await pool.query(
+      `UPDATE users SET profile_picture_url = $1 WHERE user_id = $2 RETURNING profile_picture_url`,
+      [profilePictureUrl, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    res.json({ success: true, profile: { profile_picture_url: result.rows[0].profile_picture_url } });
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    res.status(500).json({ success: false, error: 'Failed to upload profile picture.' });
+  }
+});
 
 router.get('/stats', async (req, res) => {
   try {
@@ -93,121 +135,10 @@ router.post('/update-distance', async (req, res) => {
   }
 });
 
-router.get('/profile', async (req, res) => {
-  try {
-    const userId = req.session.user_id;
 
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const result = await pool.query(
-      `SELECT username, email, created_at FROM users WHERE user_id = $1`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// @route   POST /api/user/update-profile
-// @desc    Update user's profile data
-// @access  Private (requires authentication)
-router.post('/update-profile', async (req, res) => {
-  try {
-    const userId = req.session.user_id;
-    const { username, email } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-
-    // Basic validation
-    if (!username || !email) {
-      return res.status(400).json({ success: false, error: 'Username and email are required.' });
-    }
-
-    // Update user in the database
-    const result = await pool.query(
-      `UPDATE users SET username = $1, email = $2 WHERE user_id = $3 RETURNING username, email, created_at`,
-      [username, email, userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'User not found.' });
-    }
-
-    res.json({ success: true, profile: result.rows[0] });
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    res.status(500).json({ success: false, error: 'Failed to update user profile.' });
-  }
-});
-
-router.get('/profile', async (req, res) => {
-  try {
-    const userId = req.session.user_id;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const result = await pool.query(
-      `SELECT username, email, created_at FROM users WHERE user_id = $1`,
-      [userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// @route   POST /api/user/update-profile
-// @desc    Update user's profile data
-// @access  Private (requires authentication)
-router.post('/update-profile', async (req, res) => {
-  try {
-    const userId = req.session.user_id;
-    const { username, email } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-
-    // Basic validation
-    if (!username || !email) {
-      return res.status(400).json({ success: false, error: 'Username and email are required.' });
-    }
-
-    // Update user in the database
-    const result = await pool.query(
-      `UPDATE users SET username = $1, email = $2 WHERE user_id = $3 RETURNING username, email, created_at`,
-      [username, email, userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'User not found.' });
-    }
-
-    res.json({ success: true, profile: result.rows[0] });
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    res.status(500).json({ success: false, error: 'Failed to update user profile.' });
-  }
-});
+// NOTE: Removed duplicate router.get('/profile') and router.post('/update-profile') routes.
+// Duplicate route definitions can lead to unexpected behavior as only the first definition is used.
+// The correct definitions are located earlier in this file.
 
 // Add streak check endpoint (logic implemented later)
 router.post('/check-streak', async (req, res) => {

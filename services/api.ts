@@ -212,17 +212,19 @@ export const userAPI = {
 
 
     const result = await response.json();
+    // NOTE: Unit mismatch fix. The backend returns distance in meters, but the frontend expects miles.
+    // Converting meters to miles (1 meter = 0.000621371 miles).
+    const METERS_TO_MILES = 0.000621371;
     return {
       ...result,
       user_id: result.user_id,
       territories_owned: Number(result.territories_owned) || 0,
       current_streak: Number(result.current_streak) || 0,
-      today_distance: Number(result.today_distance) || 0, // FIX THIS
-      weekly_distance: Number(result.weekly_distance) || 0, // FIX THIS
+      today_distance: (Number(result.today_distance) * METERS_TO_MILES) || 0, 
+      weekly_distance: (Number(result.weekly_distance) * METERS_TO_MILES) || 0, 
       weekly_goal: Number(result.weekly_goal) || 15,
     };
   },
-  /*
   async updateDistance(
     distanceMiles: number,
   ): Promise<{ success: boolean; stats: UserStats }> {
@@ -261,7 +263,6 @@ export const userAPI = {
     console.log('✅ API: updateDistance success:', result);
     return result;
   },
-*/
   async checkStreak(): Promise<{ success: boolean; stats: UserStats }> {
     const response = await fetch(`${API_BASE}/user/check-streak`, {
       method: 'POST',
@@ -367,6 +368,45 @@ export const territoryAPI = {
 
     const result = await response.json();
     return result.territories;
+  },
+
+  async saveTerritory(coordinates: LatLng[][], areaM2: number): Promise<{ success: boolean, territory_id: string }> {
+    const response = await fetch(`${API_BASE}/territories/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        coordinates,
+        area_sq_meters: areaM2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save territory');
+    }
+
+    return await response.json();
+  },
+
+  async updateTerritory(territoryId: string, coordinates: LatLng[][], areaM2: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE}/territories/update`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        territory_id: territoryId,
+        coordinates,
+        area_sq_meters: areaM2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update territory');
+    }
+
+    return await response.json();
   },
 };
 

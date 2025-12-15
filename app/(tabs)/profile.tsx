@@ -49,7 +49,7 @@ export default function ProfileScreen() {
     try {
       await Share.share({
         message:
-          'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.example',
+          'join me on zoneconquer — walk, ride, and claim territory!\nhttps://zoneconquer.app',
       });
     } catch {
       // ignore share errors for now
@@ -193,6 +193,20 @@ export default function ProfileScreen() {
               <Ionicons name="person-add" size={18} color={Colors.dark.text} />
               <Text style={styles.actionTextPrimary}>Invite Friends</Text>
             </Pressable>
+
+            <Link href="/pending-requests" asChild>
+              <Pressable style={[styles.actionBtn, styles.outline]}>
+                <Ionicons name="mail-outline" size={18} color={Colors.light.secondary} />
+                <Text style={styles.actionTextOutline}>Pending Requests</Text>
+              </Pressable>
+            </Link>
+
+            <Link href="/friends-list" asChild>
+              <Pressable style={[styles.actionBtn, styles.outline]}>
+                <Ionicons name="people-outline" size={18} color={Colors.light.secondary} />
+                <Text style={styles.actionTextOutline}>My Friends</Text>
+              </Pressable>
+            </Link>
 
             <Pressable
               style={[styles.actionBtn, styles.outline]}
