@@ -23,7 +23,7 @@ import MapView, {
 
 import { useUserStore } from '../../store/user';
 import { useFocusEffect } from '@react-navigation/native';
-import { friendsAPI, FriendTerritory } from '@/services/api';
+import { friendsAPI, FriendTerritory, territoryAPI } from '@/services/api';
 
 import type {
   Feature,
@@ -347,7 +347,7 @@ export default function MapScreen() {
       }
     
       try {
-        console.log('🔄 Updating territory in DB:', territoryId);
+        console.log('Updating territory in DB:', territoryId);
         const result = await territoryAPI.updateTerritory(territoryId, coordinates, areaM2);
     
         if (result.success) {
@@ -563,7 +563,7 @@ export default function MapScreen() {
         };
   
         await AsyncStorage.setItem(key, JSON.stringify(toSave));
-        console.log('[currentPath] saved for user', user.user_id);
+        //console.log('[currentPath] saved for user', user.user_id);
       } catch (e) {
         console.warn('failed to save unfinished ride', e);
       }
@@ -764,8 +764,6 @@ export default function MapScreen() {
       }
     }
   }
-  
-  // Add this function near the top of your component, after other helper functions:
 
   function mergeCoordinates(existingCoords: LatLng[], newLoop: LatLng[]): LatLng[] {
     try {
@@ -795,7 +793,6 @@ export default function MapScreen() {
       const existingPoly = turf.polygon([existingRing]);
       const newPoly = turf.polygon([newRing]);
       
-      // Use dissolve to merge polygons (like in your original code)
       const fc = featureCollection([existingPoly, newPoly] as any) as any;
       const dissolved = dissolve(fc as any) as any;
       
@@ -865,11 +862,11 @@ export default function MapScreen() {
     if (!user) return null;
     
     try {
-      console.log('📤 Saving NEW territory to DB');
+      console.log('Saving NEW territory to DB');
       const result = await territoryAPI.saveTerritory([coordinates], areaM2);
       
       if (result.success) {
-        console.log('✅ New territory saved to DB:', result.territory_id);
+        console.log('New territory saved to DB:', result.territory_id);
         loadAllTerritories();
         return result.territory_id;
       } else {
