@@ -69,6 +69,7 @@ export interface Territory {
   coordinates: { latitude: number; longitude: number }[][];
   area_sq_meters: number;
   created_at: string;
+  username: string;
 }
 
 // Interfaces for Gamification
@@ -228,7 +229,7 @@ export const userAPI = {
   async updateDistance(
     distanceMiles: number,
   ): Promise<{ success: boolean; stats: UserStats }> {
-    console.log('📤 API: updateDistance called with', distanceMiles, 'miles');
+    console.log('API: updateDistance called with', distanceMiles, 'miles');
     
     // Convert miles to meters before sending
     const distanceMeters = distanceMiles * 1609.34;
@@ -243,16 +244,16 @@ export const userAPI = {
       body: JSON.stringify({ distance_meters: distanceMeters }),
     });
   
-    console.log('📥 API: updateDistance response status:', response.status);
+    console.log('API: updateDistance response status:', response.status);
     
     if (!response.ok) {
       // 🔥 CRITICAL: Get the actual error message
       const errorText = await response.text(); // Read once
-      console.log('🔴 BACKEND ERROR TEXT:', errorText);
+      console.log('BACKEND ERROR TEXT:', errorText);
       
       try {
         const errorData = JSON.parse(errorText);
-        console.log('🔴 BACKEND ERROR JSON:', errorData);
+        console.log('BACKEND ERROR JSON:', errorData);
         throw new Error(errorData.error || `Backend error: ${response.status}`);
       } catch (e) {
         throw new Error(`Failed to update distance: ${response.status} - ${errorText}`);
@@ -388,7 +389,10 @@ export const territoryAPI = {
     return await response.json();
   },
 
-  async updateTerritory(territoryId: string, coordinates: LatLng[][], areaM2: number): Promise<{ success: boolean }> {
+  async updateTerritory(territoryId: string, coordinates: LatLng[][], areaM2: number): Promise<{ 
+    success: boolean;
+    error?: string; 
+  }> {
     const response = await fetch(`${API_BASE}/territories/update`, {
       method: 'PUT',
       headers: {
@@ -401,11 +405,15 @@ export const territoryAPI = {
         area_sq_meters: areaM2,
       }),
     });
-
+  
     if (!response.ok) {
-      throw new Error('Failed to update territory');
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.error || 'Failed to update territory'
+      };
     }
-
+  
     return await response.json();
   },
 };

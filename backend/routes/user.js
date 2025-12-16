@@ -47,7 +47,7 @@ router.post('/profile-picture', upload.single('profilePicture'), async (req, res
 router.get('/stats', async (req, res) => {
   try {
     
-    console.log('🔍 SESSION DEBUG:', {
+    console.log('SESSION DEBUG:', {
       session: req.session,
       userId: req.session.user_id,
       sessionID: req.sessionID,
@@ -61,7 +61,7 @@ router.get('/stats', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    console.log('📊 Fetching stats for user:', userId);
+    console.log('Fetching stats for user:', userId);
 
     // Query the database for user stats
     const result = await pool.query(
@@ -69,7 +69,7 @@ router.get('/stats', async (req, res) => {
       [userId]
     );
 
-    console.log('📈 Database result:', result.rows);
+    console.log('Database result:', result.rows);
 
     if (result.rows.length === 0) {
       // Create default stats if none exist - MOST THINGS 0, GOAL 15
@@ -82,11 +82,35 @@ router.get('/stats', async (req, res) => {
         [userId]
       );
       console.log('Created default stats:', defaultStats.rows[0]);
-      return res.json(defaultStats.rows[0]);
+      
+      // Convert numeric to numbers for JSON
+      const stats = defaultStats.rows[0];
+      const convertedStats = {
+        user_id: stats.user_id,
+        territories_owned: Number(stats.territories_owned),
+        current_streak: Number(stats.current_streak),
+        today_distance: Number(stats.today_distance),
+        weekly_distance: Number(stats.weekly_distance),
+        weekly_goal: Number(stats.weekly_goal)
+      };
+      
+      return res.json(convertedStats);
     }
 
     console.log('Returning user stats:', result.rows[0]);
-    res.json(result.rows[0]);
+    
+    // Convert numeric to numbers for JSON
+    const stats = result.rows[0];
+    const convertedStats = {
+      user_id: stats.user_id,
+      territories_owned: Number(stats.territories_owned),
+      current_streak: Number(stats.current_streak),
+      today_distance: Number(stats.today_distance),
+      weekly_distance: Number(stats.weekly_distance),
+      weekly_goal: Number(stats.weekly_goal)
+    };
+    
+    res.json(convertedStats);
     
   } catch (error) {
     console.error('Error fetching user stats:', error);
@@ -124,21 +148,27 @@ router.post('/update-distance', async (req, res) => {
       return res.status(404).json({ error: 'User stats not found' });
     }
 
+    // ✅ Convert numeric to numbers for JSON
+    const stats = result.rows[0];
+    const convertedStats = {
+      user_id: stats.user_id,
+      territories_owned: Number(stats.territories_owned),
+      current_streak: Number(stats.current_streak),
+      today_distance: Number(stats.today_distance),
+      weekly_distance: Number(stats.weekly_distance),
+      weekly_goal: Number(stats.weekly_goal)
+    };
+
     //console.log('Distance updated successfully ^_^');
     res.json({ 
       success: true, 
-      stats: result.rows[0] 
+      stats: convertedStats  // ✅ Send converted stats
     });
   } catch (error) {
     console.error('Distance update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
-
-// NOTE: Removed duplicate router.get('/profile') and router.post('/update-profile') routes.
-// Duplicate route definitions can lead to unexpected behavior as only the first definition is used.
-// The correct definitions are located earlier in this file.
 
 // Add streak check endpoint (logic implemented later)
 router.post('/check-streak', async (req, res) => {

@@ -21,8 +21,7 @@ interface UserState {
   fetchAchievements: () => void; // Action to fetch all achievements
   fetchChallenges: () => void; // Action to fetch all challenges
   fetchUserProgress: () => void; // Action to fetch user's progress on gamification
-  //updateDistance: (distanceMiles: number) => Promise<{ success: boolean; stats: UserStats }>; 
-  //temporarily commented out until api is fixed ^^
+  updateDistance: (distanceMiles: number) => Promise<{ success: boolean; stats: UserStats }>; 
   updateProfile: (profileData: { username: string; email: string }) => Promise<void>;
 }
 
@@ -129,13 +128,16 @@ export const useUserStore = create<UserState>((set) => ({
   },
 
   updateDistance: async (distanceMiles: number) => { 
-    set({ loading: true, error: null });
+    // REMOVED: set({ loading: true, error: null });
     try {
       const result = await userAPI.updateDistance(distanceMiles);
-      set({ stats: result.stats, loading: false });
+      // Update only stats, not loading state
+      set({ stats: result.stats });
       return result; 
     } catch (error) {
-      set({ error: 'Failed to update distance.', loading: false });
+      console.error('Failed to update distance:', error);
+      // Set error without affecting loading
+      set({ error: 'Failed to update distance.' });
       throw error; 
     }
   },

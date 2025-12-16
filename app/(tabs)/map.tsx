@@ -23,7 +23,8 @@ import MapView, {
 
 import { useUserStore } from '../../store/user';
 import { useFocusEffect } from '@react-navigation/native';
-import { friendsAPI, FriendTerritory, territoryAPI } from '@/services/api';
+import { friendsAPI, FriendTerritory, territoryAPI, Territory } from '@/services/api';
+
 
 import type {
   Feature,
@@ -35,6 +36,27 @@ import type {
 type LatLng = { latitude: number; longitude: number };
 type XY = { x: number; y: number };
 type TerritoryFeature = Feature<GeoPolygon | MultiPolygon>;
+
+// Add these near your other type definitions
+type PathPoint = {
+  lat: number;
+  lng: number;
+  t: number;
+};
+
+type LoopSummary = {
+  id: string;
+  closedAt: number;
+  areaSqMeters: number;
+};
+
+type WalkSession = {
+  id: string;
+  startedAt: number;
+  endedAt: number | null;
+  points: PathPoint[];
+  loops: LoopSummary[];
+};
 
 // thresholds for what counts as a "real" loop
 const MIN_PERIMETER_M = 80;
@@ -95,14 +117,7 @@ export default function MapScreen() {
   const { user, fetchUserStats, updateDistance, stats } = useUserStore();
   const [current, setCurrent] = useState<LatLng | null>(null);
 
-  const [allTerritories, setAllTerritories] = useState<{
-    territory_id: string;
-    coordinates: LatLng[][];
-    username: string;
-    user_id: string;
-    area_sq_meters: number;
-    created_at: string;
-  }[]>([]);
+  const [allTerritories, setAllTerritories] = useState<Territory[]>([]);
 
   const [friendTerritories, setFriendTerritories] = useState<FriendTerritory[]>([]);
   // breadcrumb line you're drawing this session
@@ -111,9 +126,13 @@ export default function MapScreen() {
   const [distanceMeters, setDistanceMeters] = useState(0);
   // privacy + tracking toggles
   const [maskLocation, setMaskLocation] =
-   
     useState<boolean>(DEFAULT_MASK);
-  const [isTracking, setIsTracking] = useState(false);
+    
+  const toggleMask = () => {
+    setMaskLocation(prev => !prev);
+  };
+
+    const [isTracking, setIsTracking] = useState(false);
   // raw loops for stats/debug only
   const [loops, setLoops] = useState<LatLng[][]>([]);
   // merged territory + area;
@@ -226,17 +245,17 @@ export default function MapScreen() {
   };
 
   const loadAllTerritories = async () => {
-    console.log('🔄 loadAllTerritories CALLED');
+    console.log('loadAllTerritories CALLED');
   
     if (!user) {
-      console.log('❌ No user in loadAllTerritories');
+      console.log(' No user in loadAllTerritories');
       return;
     }
   
     try {
-      console.log('🌐 Fetching territories from API...');
+      console.log('Fetching territories from API...');
       const territories = await territoryAPI.getHistory();
-      console.log('✅ Setting territories to state:', territories.length);
+      console.log('Setting territories to state:', territories.length);
       setAllTerritories(territories);
     } catch (error) {
       console.warn('Fetch error:', error);
@@ -245,53 +264,15 @@ export default function MapScreen() {
 
   const fetchFriendTerritories = async () => {
     try {
-      console.log('📡 Fetching friend territories...');
+      console.log('Fetching friend territories...');
       const territories = await friendsAPI.getFriendsTerritories();
-      console.log('✅ Friend territories fetched:', territories.length);
+      console.log('Friend territories fetched:', territories.length);
       setFriendTerritories(territories);
     } catch (error) {
       console.error('❌ Failed to fetch friend territories:', error);
     }
   };
-  // ---------- load saved stuff on mount ----------
 
-  /*
-  // load saved territory once on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(LOOPS_KEY);
-        if (!raw) return;
-
-        const parsed = JSON.parse(raw) as {
-          loops?: LatLng[][];
-          totalAreaM2?: number;
-          territory?: TerritoryFeature;
-        };
-
-        if (Array.isArray(parsed.loops)) setLoops(parsed.loops);
-        if (typeof parsed.totalAreaM2 === 'number')
-          setTotalAreaM2(parsed.totalAreaM2);
-        if (parsed.territory) setTerritory(parsed.territory);
-      } catch (e) {
-        console.warn('failed to load saved territory', e);
-      }
-    })();
-  }, []);
-
-  // load rawPaths sessions once on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = await loadSessions();
-        setSessions(stored);
-        sessionsRef.current = stored;
-      } catch (e) {
-        console.warn('failed to load raw sessions', e);
-      }
-    })();
-  }, []);
-*/
   // restore unfinished ride (path + distance + mask offset) on mount
   useEffect(() => {
     if (!user?.user_id) return;
@@ -335,35 +316,35 @@ export default function MapScreen() {
   }, [user?.user_id]);
 
   
-    // helper functions 
-    const updateTerritoryInDB = async (
-      territoryId: string,
-      coordinates: LatLng[][],
-      areaM2: number
-    ): Promise<void> => {
-      if (!user) {
-        console.log('❌ User not logged in, skipping territory update');
-        return;
+  // helper functions 
+  const updateTerritoryInDB = async (
+    territoryId: string,
+    coordinates: LatLng[][],
+    areaM2: number
+  ): Promise<void> => {
+    if (!user) {
+      console.log('User not logged in, skipping territory update');
+      return;
+    }
+  
+    try {
+      console.log('Updating territory in DB:', territoryId);
+      const result = await territoryAPI.updateTerritory(territoryId, coordinates, areaM2);
+  
+      if (result.success) {
+        console.log(' Territory updated in DB:', territoryId);
+        
+        // Refresh ALL territories from database
+        loadAllTerritories();
+        
+      } else {
+        console.warn('Failed to update territory:', result.error);
+        console.warn('Response:', result);
       }
-    
-      try {
-        console.log('Updating territory in DB:', territoryId);
-        const result = await territoryAPI.updateTerritory(territoryId, coordinates, areaM2);
-    
-        if (result.success) {
-          console.log('✅ Territory updated in DB:', territoryId);
-          
-          // Refresh ALL territories from database
-          loadAllTerritories();
-          
-        } else {
-          console.warn('❌ Failed to update territory:', result.error);
-          console.warn('Response:', result);
-        }
-      } catch (error) {
-        console.warn('❌ Error updating territory:', error);
-      }
-    };
+    } catch (error) {
+      console.warn('Error updating territory:', error);
+    }
+  };
   
   // Add this helper function to extract coordinates from territory state
   const extractCoordinatesFromTerritory = (territory: TerritoryFeature | null): LatLng[][] => {
@@ -516,28 +497,6 @@ export default function MapScreen() {
   }, [maskLocation]);
 
   // ---------- persistence ----------
-
-  /*
-  // persist merged territory when NOT masked
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!maskLocation) {
-          if (loops.length || totalAreaM2 > 0 || territory) {
-            await AsyncStorage.setItem(
-              LOOPS_KEY,
-              JSON.stringify({ loops, totalAreaM2, territory }),
-            );
-          } else {
-            await AsyncStorage.removeItem(LOOPS_KEY);
-          }
-        }
-      } catch (e) {
-        console.warn('failed to save territory', e);
-      }
-    })();
-  }, [loops, totalAreaM2, territory, maskLocation]);
-  */
 
   // persist unfinished ride breadcrumb
   useEffect(() => {
@@ -826,12 +785,13 @@ export default function MapScreen() {
       
       try {
         // Get loop points from the GeoJSON polygon
-        const loopPoints = loopPoly.geometry.coordinates[0];
+        const loopPositions = loopPoly.geometry.coordinates[0]; // This is Position[]
         const territoryPoints = dbTerritory.coordinates[0];
         
         // Check if any loop point is close to any territory point
-        for (const loopPoint of loopPoints) {
-          const [loopLng, loopLat] = loopPoint;
+        for (const loopPosition of loopPositions) {
+          // loopPosition is [lng, lat]
+          const [loopLng, loopLat] = loopPosition as [number, number];
           
           for (const territoryPoint of territoryPoints) {
             const distance = haversineMeters(
@@ -854,6 +814,7 @@ export default function MapScreen() {
     
     return {territoryId: null, connected: false};
   }
+
   // Helper for creating new territories
   const saveNewTerritoryToDB = async (
     coordinates: LatLng[],
@@ -870,7 +831,8 @@ export default function MapScreen() {
         loadAllTerritories();
         return result.territory_id;
       } else {
-        console.warn( 'Failed to save territory:', result.error);
+        // If success is false but there's no error property
+        console.warn('Failed to save territory: Success flag was false');
         return null;
       }
     } catch (error) {
@@ -1148,9 +1110,11 @@ export default function MapScreen() {
   // ---------- handle a newly observed point ----------
 
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
+    console.log("Calling handleNewPoint")
     const t = Date.now();
     let accepted = false;
     const prevForCut = current;
+    let delta = 0; // Track distance moved
   
     setCurrent(p);
     setPath((prev) => {
@@ -1161,17 +1125,23 @@ export default function MapScreen() {
       }
   
       const last = prev[prev.length - 1];
-      const delta = haversineMeters(last, p);
+      delta = haversineMeters(last, p);
   
       const badAccuracy = accuracy > 50;
       const tooSmall = delta < 3; // jitter
       const tooLarge = delta > 200; // spikes
   
       if (!badAccuracy && !tooSmall && !tooLarge) {
+        console.log('Distance moved:', delta.toFixed(2), 'meters');
         const xy = toXY(p);
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
-  
+        if (delta > 0) {
+          const distanceMiles = delta / 1609.344; // Convert meters to miles
+          updateDistance(distanceMiles).catch((error: Error) => {
+            console.warn('Failed to update distance:', error);
+          });
+        }
         // try to close a self-loop (path-only)
         const closure = findClosure(xyRef.current);
         if (closure) {
@@ -1212,7 +1182,6 @@ export default function MapScreen() {
             // Reset path to ONLY current point
             xyRef.current = [toXY(p)]; // Reset XY array
             
-            // Don't return [...prev, p] - return just [p]
             accepted = true;
             return [p]; // ← ONLY current point!
           }
@@ -1435,9 +1404,9 @@ export default function MapScreen() {
 
   const nudgeCurrent = (dxMeters: number, dyMeters: number) => {
     if (!current) return;
-
+  
     ensureSessionStarted();
-
+  
     if (!originRef.current) {
       const mPerDegLat = 111111;
       const mPerDegLon =
@@ -1449,35 +1418,18 @@ export default function MapScreen() {
         mPerDegLon,
       };
     }
-
+  
     const lastXY = toXY(current);
     const nextXY: XY = {
       x: lastXY.x + dxMeters,
       y: lastXY.y + dyMeters,
     };
     const next = toLatLng(nextXY);
-    /*
-    console.log('[arrow] move', {
-      from: {
-        lat: Number(current.latitude.toFixed(6)),
-        lon: Number(current.longitude.toFixed(6)),
-      },
-      to: {
-        lat: Number(next.latitude.toFixed(6)),
-        lon: Number(next.longitude.toFixed(6)),
-      },
-      dxMeters,
-      dyMeters,
-    });*/
-
+  
+    // Just call handleNewPoint
     handleNewPoint(next, 5);
   };
 
-  // ---------- HUD helpers ----------
-
-  const toggleMask = () => {
-    setMaskLocation((m) => !m);
-  };
 
   const distanceMi = distanceMeters / 1609.344;
 
