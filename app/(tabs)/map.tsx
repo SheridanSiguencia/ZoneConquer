@@ -113,10 +113,14 @@ export default function MapScreen() {
     useState<boolean>(DEFAULT_MASK);
   const [isTracking, setIsTracking] = useState(false);
   // raw loops for stats/debug only
+<<<<<<< Updated upstream
   const [loops, setLoops] = useState<LatLng[][]>([]);
   // merged Paper.io-style territory + area;
   const [territory, setTerritory] =
     useState<TerritoryFeature | null>(null);
+=======
+
+>>>>>>> Stashed changes
   const [totalAreaM2, setTotalAreaM2] = useState(0);
 
   // rawPaths sessions
@@ -542,7 +546,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
         };
   
         await AsyncStorage.setItem(key, JSON.stringify(toSave));
-        console.log('[currentPath] saved for user', user.user_id);
+        //console.log('[currentPath] saved for user', user.user_id);
       } catch (e) {
         console.warn('failed to save unfinished ride', e);
       }
@@ -666,35 +670,16 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
   // ---------- merge loops into territory (Paper.io blob) ----------
 
   // helper: extract plain Polygon geometries from the current territory
-  function extractPolygons(
-    t: TerritoryFeature | null,
-  ): GeoPolygon[] {
-    if (!t || !t.geometry) return [];
-
-    const g = t.geometry;
-
-    if (g.type === 'Polygon') {
-      return [g];
-    }
-
-    if (g.type === 'MultiPolygon') {
-      return g.coordinates.map(
-        (coords) =>
-          ({
-
-            type: 'Polygon',
-            coordinates: coords,
-          } as GeoPolygon),
-      );
-    }
-
-    return [];
-  }
 
   function mergeLoopIntoTerritory(loop: LatLng[]) {
     if (loop.length < 3) return;
+<<<<<<< Updated upstream
   
     // LatLng[] → GeoJSON ring [ [lng, lat], ... ]
+=======
+    
+    // Create loop polygon
+>>>>>>> Stashed changes
     const ring: [number, number][] = loop.map((p) => [
       p.longitude,
       p.latitude,
@@ -710,6 +695,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
   
     const loopPoly = turf.polygon([ring]) as TerritoryFeature;
     const loopArea = turf.area(loopPoly);
+<<<<<<< Updated upstream
   
     if (loopArea <= 0) {
       console.warn('[territory] new loop has zero area, skipping');
@@ -737,6 +723,58 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     ];
 
     let acc: TerritoryFeature | null = null;
+=======
+    
+    console.log('[merge] Loop area:', loopArea.toFixed(2), 'm²');
+    
+    // ALWAYS check if loop connects to any existing territory
+    const {territoryId, connected} = await checkLoopConnection(loop);
+    
+    if (connected && territoryId) {
+      console.log('[merge] Loop CONNECTED to territory:', territoryId);
+      
+      // Find the territory in our local state
+      const existingTerritory = allTerritories.find(t => t.territory_id === territoryId);
+      
+      if (existingTerritory) {
+        console.log('[merge] Merging with territory:', existingTerritory.territory_id);
+        
+        // Merge the coordinates
+        const existingCoords = existingTerritory.coordinates[0];
+        const mergedCoords = mergeCoordinates(existingCoords, loop);
+        
+        // Update in database
+        await updateTerritoryInDB(
+          territoryId,
+          [mergedCoords],
+          existingTerritory.area_sq_meters + loopArea
+        );
+        
+        // Update current territory ID
+        setCurrentTerritoryId(territoryId);
+        
+        // Update total area (for display)
+        setTotalAreaM2(existingTerritory.area_sq_meters + loopArea);
+        
+        // Refresh territories from database
+        await loadAllTerritories();
+      }
+    } else {
+      // No connection - create new territory
+      console.log('[merge] Creating NEW territory');
+      const newTerritoryId = await saveNewTerritoryToDB(loop, loopArea);
+      
+      if (newTerritoryId) {
+        setCurrentTerritoryId(newTerritoryId);
+        setTotalAreaM2(loopArea);
+        
+        // Refresh territories from database
+        await loadAllTerritories();
+      }
+    }
+  }
+  // Add this function near the top of your component, after other helper functions:
+>>>>>>> Stashed changes
 
     try {
       const fc = featureCollection(
@@ -744,12 +782,85 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
       ) as any; // FeatureCollection<Polygon>
       const dissolved = dissolve(fc as any) as any;
 
+<<<<<<< Updated upstream
       if (
         dissolved &&
         dissolved.features &&
         dissolved.features.length > 0
       ) {
         acc = dissolved.features[0] as TerritoryFeature;
+=======
+  // connection check function
+  async function checkLoopConnection(loopPoly: TerritoryFeature): Promise<{territoryId: string | null, connected: boolean}> {
+    console.log('Calling CHECKLOOPCONNECTION');
+    if (!user || allTerritories.length === 0) {
+      return {territoryId: null, connected: false};
+    }
+    
+    for (const dbTerritory of allTerritories) {
+      // Only check user's own territories
+      if (dbTerritory.user_id !== user.user_id) 
+        continue;
+      
+      try {
+        // Get loop points from the GeoJSON polygon
+        const loopPoints = loopPoly.geometry.coordinates[0];
+        const territoryPoints = dbTerritory.coordinates[0];
+        
+        // Check if any loop point is close to any territory point
+        for (const loopPoint of loopPoints) {
+          const [loopLng, loopLat] = loopPoint;
+          
+          for (const territoryPoint of territoryPoints) {
+            const distance = haversineMeters(
+              { latitude: loopLat, longitude: loopLng },
+              { latitude: territoryPoint.latitude, longitude: territoryPoint.longitude }
+            );
+            
+            // If any point is within 10m, consider connected
+            if (distance < 10) {
+              console.log('[connection-check] Connected! Distance:', distance.toFixed(2), 'm');
+              return {territoryId: dbTerritory.territory_id, connected: true};
+            }
+          }
+        }
+        
+      } catch (error) {
+        console.warn(`Error checking territory ${dbTerritory.territory_id}:`, error);
+      }
+    }
+    
+    return {territoryId: null, connected: false};
+  }
+  // Helper for creating new territories
+  const saveNewTerritoryToDB = async (
+    coordinates: LatLng[],
+    areaM2: number
+  ): Promise<string | null> => {
+    if (!user) return null;
+    
+    try {
+      console.log('Saving NEW territory to DB');
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE}/territories/save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            coordinates: [coordinates], // Wrap in array
+            area_sq_meters: areaM2,
+          }),
+        }
+      );
+  
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ New territory saved to DB:', result.territory_id);
+        loadAllTerritories();
+        return result.territory_id;
+>>>>>>> Stashed changes
       } else {
         console.warn(
           '[territory] dissolve returned no features, keeping previous territory',
@@ -803,6 +914,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
 
   // ---------- Paper.io cut logic (use existing territory edge as a side) ----------
 
+<<<<<<< Updated upstream
   function processPaperCut(prev: LatLng, curr: LatLng) {
     if (!territory || !territory.geometry) {
       resetCutState();
@@ -974,6 +1086,8 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     return loop;
   }
 
+=======
+>>>>>>> Stashed changes
   function nearestRingIndex(ring: LatLng[], target: LatLng): number {
     let bestIdx = -1;
     let bestDist = Infinity;
@@ -997,29 +1111,196 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
   }
 
   // ---------- Paper.io-style tail → territory merge ----------
+  function isPointInPolygon(point: LatLng, polygon: LatLng[]): boolean {
+    if (polygon.length < 3) return false; // Need at least 3 points for a polygon
+    
+    let inside = false;
+    
+    // Ray casting algorithm
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].longitude, yi = polygon[i].latitude;
+      const xj = polygon[j].longitude, yj = polygon[j].latitude;
+      
+      // Check if point crosses the line between polygon[i] and polygon[j]
+      const intersect = ((yi > point.latitude) !== (yj > point.latitude)) &&
+        (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi) + xi);
+      
+      if (intersect) inside = !inside; // Toggle inside/outside
+    }
+    
+    return inside;
+  }
 
+  // Find where line from current to previous intersects border
+function findBorderIntersection(currentPoint: LatLng, border: LatLng[]): LatLng | null {
+  if (path.length < 2) return null;
+  
+  const prevPoint = path[path.length - 1];
+  
+  // Check intersection with each border segment
+  for (let i = 0; i < border.length; i++) {
+    const borderStart = border[i];
+    const borderEnd = border[(i + 1) % border.length];
+    
+    const intersection = lineSegmentIntersection(
+      prevPoint, currentPoint,
+      borderStart, borderEnd
+    );
+    
+    if (intersection) {
+      return intersection;
+    }
+  }
+  
+  // If no intersection, check if current point is very close to any border point
+  for (const borderPoint of border) {
+    const distance = haversineMeters(currentPoint, borderPoint);
+    if (distance < 10) { // 10 meter threshold
+      return borderPoint;
+    }
+  }
+  
+  return null;
+}
+
+function lineSegmentIntersection(
+  a1: LatLng, a2: LatLng, // Line from previous to current
+  b1: LatLng, b2: LatLng  // Border segment
+): LatLng | null {
+  const x1 = a1.longitude, y1 = a1.latitude;
+  const x2 = a2.longitude, y2 = a2.latitude;
+  const x3 = b1.longitude, y3 = b1.latitude;
+  const x4 = b2.longitude, y4 = b2.latitude;
+  
+  // Calculate denominator
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (Math.abs(denom) < 0.000001) return null; // Lines are parallel
+  
+  // Calculate intersection parameters
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+  
+  // Check if intersection is within both segments
+  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+    return {
+      longitude: x1 + ua * (x2 - x1),
+      latitude: y1 + ua * (y2 - y1)
+    };
+  }
+  
+  return null; // Intersection is outside segment bounds
+}
+function buildPaperIoExpansionLoop(
+  exitPoint: LatLng,      // Where we left the territory
+  entryPoint: LatLng,     // Where we re-entered
+  tailPath: LatLng[],     // Path we drew outside
+  territoryBorder: LatLng[] // The territory's border
+): LatLng[] {
+  try {
+    // Find where exit and entry points are on the border
+    const exitIdx = findClosestBorderIndex(exitPoint, territoryBorder);
+    const entryIdx = findClosestBorderIndex(entryPoint, territoryBorder);
+    
+    if (exitIdx === -1 || entryIdx === -1) {
+      return [...tailPath, entryPoint]; // Fallback
+    }
+    
+    // Get the border segment between exit and entry
+    const borderSegment: LatLng[] = [];
+    const n = territoryBorder.length;
+    
+    // Walk along border from exit to entry
+    let i = exitIdx;
+    while (true) {
+      borderSegment.push(territoryBorder[i]);
+      if (i === entryIdx) break;
+      i = (i + 1) % n; // Move forward along border
+    }
+    
+    // Build the complete loop
+    const loop: LatLng[] = [];
+    
+    // 1. Start at exit point
+    loop.push(exitPoint);
+    
+    // 2. Add tail path (outside the territory)
+    for (const point of tailPath) {
+      loop.push(point);
+    }
+    
+    // 3. Add entry point
+    loop.push(entryPoint);
+    
+    // 4. Add border segment (back to exit)
+    for (let k = 1; k < borderSegment.length; k++) {
+      loop.push(borderSegment[k]); // Skip exit (already added)
+    }
+    
+    // Ensure loop is closed
+    if (!almostEqualLatLng(loop[0], loop[loop.length - 1])) {
+      loop.push(loop[0]);
+    }
+    
+    return loop;
+  } catch (error) {
+    console.warn('[buildPaperIoExpansionLoop] Error:', error);
+    return tailPath; // Fallback
+  }
+}
+
+function findClosestBorderIndex(point: LatLng, border: LatLng[]): number {
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  
+  for (let i = 0; i < border.length; i++) {
+    const dist = haversineMeters(point, border[i]);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  
+  return bestIdx;
+}
   const applyPaperIoTailLogic = (p: LatLng) => {
-    if (!territory) {
-      // no territory yet → nothing to do
+    // Early exit: if no user or territories
+    if (!user || allTerritories.length === 0) {
       lastInsideRef.current = false;
       tailRef.current = [];
       return;
     }
-
-    // Is this point inside the current territory?
-    const pt = turf.point([p.longitude, p.latitude]);
-    const inside = turf.booleanPointInPolygon(pt, territory as any);
+    
+    // Get ONLY current user's territories
+    const userTerritories = allTerritories.filter(t => t.user_id === user.user_id);
+    
+    // Find which territory (if any) contains point p
+    let currentTerritory = null;
+    for (const territory of userTerritories) {
+      const territoryBorder = territory.coordinates[0];
+      if (isPointInPolygon(p, territoryBorder)) {
+        currentTerritory = territory;
+        break; // Stop checking, found our territory
+      }
+    }
+    
+    // Check if point is inside ANY territory
+    const inside = !!currentTerritory;
     const wasInside = lastInsideRef.current;
-
-    console.log('[paperio-tail-state]', {
-      lat: p.latitude.toFixed(6),
-      lon: p.longitude.toFixed(6),
-      wasInside,
+    
+    console.log('[paperio] State:', { 
+      wasInside, 
       inside,
+      territoryId: currentTerritory?.territory_id 
     });
-
-    // 1) Leaving territory → start a new tail
+    
+    // If we're inside a territory, track it
+    if (inside && currentTerritory) {
+      setCurrentTerritoryId(currentTerritory.territory_id);
+    }
+    
+    // 1) LEAVING territory → start expansion tail
     if (wasInside && !inside) {
+<<<<<<< Updated upstream
       tailRef.current = [p];
     }
     // 2) Still outside → grow tail
@@ -1056,24 +1337,82 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
 
           // 🧹 clear old trails after a capture, keep only current point
           hardResetBreadcrumb(p);
+=======
+      console.log('[expansion] Leaving territory, starting expansion');
+      
+      // Get the territory we just left (wasInside = true)
+      // We need to find which territory we were in before
+      for (const territory of userTerritories) {
+        const territoryBorder = territory.coordinates[0];
+        // Check if previous point (from path) was inside
+        if (path.length > 0 && isPointInPolygon(path[path.length - 1], territoryBorder)) {
+          tailRef.current = [path[path.length - 1]]; // Start tail at exit point
+          break;
+>>>>>>> Stashed changes
         }
       }
-
-      // Tail is consumed once we've merged (or decided not to)
+    }
+    // 2) STILL OUTSIDE → grow tail
+    else if (!wasInside && !inside) {
+      if (tailRef.current.length > 0) {
+        tailRef.current.push(p);
+      }
+    }
+    // 3) RE-ENTERING territory → check for border connection
+    else if (!wasInside && inside && currentTerritory) {
+      console.log('[expansion] Re-entering territory, checking border connection');
+      
+      if (tailRef.current.length >= 2) {
+        // Get the territory's border coordinates
+        const territoryBorder = currentTerritory.coordinates[0];
+        
+        // Check if we connect to the border
+        // (We'll implement findBorderIntersection next)
+        const entryPoint = findBorderIntersection(p, territoryBorder);
+        
+        if (entryPoint) {
+          console.log('[expansion] Connected to border at:', entryPoint);
+          
+          // Build the expansion loop
+          const expansionLoop = buildPaperIoExpansionLoop(
+            tailRef.current[0], // Exit point
+            entryPoint,         // Entry point
+            tailRef.current.slice(1), // Tail path
+            territoryBorder
+          );
+          
+          if (expansionLoop.length >= MIN_RING_POINTS) {
+            const areaM2 = polygonArea(expansionLoop.map((ll) => toXY(ll)));
+            
+            if (areaM2 >= MIN_AREA_M2) {
+              console.log('[expansion] Merging expansion loop!');
+              
+              // Merge with the territory we re-entered
+              mergeLoopIntoTerritory(expansionLoop);
+              
+              // Clear tail
+              tailRef.current = [];
+              
+              // Keep only current point
+              hardResetBreadcrumb(p);
+              return; // Skip lastInside update
+            }
+          }
+        }
+      }
+      
+      // Reset tail even if no connection
       tailRef.current = [];
     }
-
-    // Update state for the next step
+    
+    // Update state for next point
     lastInsideRef.current = inside;
   };
-
   // ---------- handle a newly observed point ----------
 
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
-    const t = Date.now();
     let accepted = false;
-    const prevForCut = current;
-
+  
     setCurrent(p);
     setPath((prev) => {
       if (prev.length === 0) {
@@ -1081,81 +1420,48 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
         accepted = true;
         return [p];
       }
-
+  
       const last = prev[prev.length - 1];
       const delta = haversineMeters(last, p);
-
+  
       const badAccuracy = accuracy > 50;
-      const tooSmall = delta < 3; // jitter
-      const tooLarge = delta > 200; // spikes
-
+      const tooSmall = delta < 3;
+      const tooLarge = delta > 200;
+  
       if (!badAccuracy && !tooSmall && !tooLarge) {
         const xy = toXY(p);
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
-
-        // try to close a self-loop (path-only)
+  
+        // Self-closed loop detection
         const closure = findClosure(xyRef.current);
         if (closure) {
           const loop = buildLoopLatLng(closure);
-
-          console.log('[loop-debug] CLOSURE', {
-            type: closure.type,
-            startIdx: closure.startIdx,
-            endIdx: closure.endIdx,
-            atXY: {
-              x: Number(closure.at.x.toFixed(2)),
-              y: Number(closure.at.y.toFixed(2)),
-            },
-            xyLength: xyRef.current.length,
-          });
-
-          console.log(
-            '[loop-debug] LOOP LATLNG',
-            loop.map((pt, idx) => ({
-
-              i: idx,
-              lat: Number(pt.latitude.toFixed(6)),
-              lon: Number(pt.longitude.toFixed(6)),
-            })),
-          );
-
+  
           if (validateLoop(loop)) {
-            const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
-            addLoopSummary(areaM2);
-
-            console.log(
-              '[loop-debug] BEFORE MERGE path length',
-              xyRef.current.length,
-            );
-
+            console.log('[loop] Self-closed loop detected, merging...');
+            
+            // Merge the loop
             mergeLoopIntoTerritory(loop);
-
-            // ✅ keep full path so future loops can reuse old sides
-            setLoops((prevLoops) => [...prevLoops, loop]);
+            
+            // ✅ Keep drawing from current position
             accepted = true;
             return [...prev, p];
           }
         }
-
+  
         accepted = true;
         return [...prev, p];
       }
-
+  
       return prev;
     });
-
+  
     if (accepted) {
-      ensureSessionStarted();
-      appendRawPoint(p, t);
-
-      // ✅ Paper.io tail logic: leave territory, wander, re-enter
+      // Paper.io tail logic for territory expansion
       applyPaperIoTailLogic(p);
-
-      // ✅ Paper.io cut detection (loops that use existing territory edge)
-      if (prevForCut && territory) {
-        processPaperCut(prevForCut, p);
-      }
+      
+      // ❌ No more processPaperCut or session functions
     }
   };
 
@@ -1506,17 +1812,18 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     return simplified.map(toLatLng);
   }
 
-  function validateLoop(loop: LatLng[]) {
+  function validateLoop(loop: LatLng[]): boolean {
     if (loop.length < MIN_RING_POINTS) return false;
-  
+    
     const xy = loop.map(toXY);
     const peri = pathLength(xy);
     const area = polygonArea(xy);
-  
+    
     console.log('[loop] validation:', {
       points: loop.length,
       perimeter: peri,
       area,
+<<<<<<< Updated upstream
       hasTerritory: !!territory,
     });
   
@@ -1536,19 +1843,32 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     }
   
     // Later loops must be "big enough"
+=======
+      hasTerritories: allTerritories.length > 0,
+    });
+    
+    // Check minimum size requirements
+>>>>>>> Stashed changes
     if (peri < MIN_PERIMETER_M) {
       console.log('[loop] Rejected: perimeter too small', peri, '<', MIN_PERIMETER_M);
       return false;
     }
+    
     if (area < MIN_AREA_M2) {
       console.log('[loop] Rejected: area too small', area, '<', MIN_AREA_M2);
       return false;
     }
+<<<<<<< Updated upstream
   
     // doesnt save merged territories to backend! it acts as separate entities but may change to updating in future
     // The frontend will merge them visually, but we don't want duplicate DB records
     console.log('[loop] Accepting but NOT saving to DB (will be merged locally)');
+=======
+>>>>>>> Stashed changes
     
+    // Always accept if passes size checks
+    // The merge logic will handle if it connects to existing territory
+    console.log('[loop] Accepted!');
     return true;
   }
 
@@ -1606,6 +1926,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
 
   // ---------- render helpers ----------
 
+<<<<<<< Updated upstream
   function renderTerritory() {
     // ✅ Preferred: single merged territory
     if (territory && territory.geometry) {
@@ -1621,15 +1942,29 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
           }),
         );
 
+=======
+  function renderUserTerritories() {
+    if (!user) return null;
+    
+    return allTerritories
+      .filter(t => t.user_id === user.user_id) // Only current user's territories
+      .map((territory, i) => {
+        const polygonCoordinates = territory.coordinates[0];
+        if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
+          return null;
+        }
+>>>>>>> Stashed changes
         return (
           <MapPolygon
-            coordinates={coords}
+            key={`user-territory-${territory.territory_id}-${i}`}
+            coordinates={polygonCoordinates}
             strokeWidth={3}
-            strokeColor="rgba(34,197,94,0.95)"
-            fillColor="rgba(34,197,94,0.6)"
-            zIndex={1000}
+            strokeColor="rgba(34,197,94,0.95)" // Green border
+            fillColor="rgba(34,197,94,0.6)"    // Green fill
+            zIndex={1000} // Highest zIndex - on top
           />
         );
+<<<<<<< Updated upstream
       }
 
       if (geom.type === 'MultiPolygon') {
@@ -1671,6 +2006,9 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
     }
 
     return null;
+=======
+      });
+>>>>>>> Stashed changes
   }
 
   return (
@@ -1700,8 +2038,16 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
           <Polyline coordinates={path} strokeWidth={4} />
         )}
 
+<<<<<<< Updated upstream
         {/* Paper.io-style merged territory */}
         {renderTerritory()}
+=======
+        {/* merged territory */}
+        {renderUserTerritories()}
+        
+        {/* Display friends territories */}
+        {renderFriendTerritories()}
+>>>>>>> Stashed changes
 
         {/* Database territories (from your old code) */}
         {allTerritories.map((territory, i) => {
@@ -1779,7 +2125,7 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
             <Text style={styles.hudMeta}>
               territory{' '}
               {(totalAreaM2 * 0.000247105).toFixed(2)} acres ·
-              loops {loops.length}
+              
             </Text>
           </View>
         </View>
@@ -1925,10 +2271,10 @@ const saveTerritoryToDB = async (loop: LatLng[], areaM2: number) => {
               stopSim();
               setPath(current ? [current] : []);
               xyRef.current = current ? [toXY(current)] : [];
-              setLoops([]);
+              
               setDistanceMeters(0);
               setTotalAreaM2(0);
-              setTerritory(null);
+              
               lastInsideRef.current = false;
               tailRef.current = [];
               setHasUnfinishedRide(false);
