@@ -4,7 +4,7 @@ console.log('[server] DATABASE_URL in server.js =', process.env.DATABASE_URL);
 const express = require('express');
 const session = require('express-session');  
 const cors = require('cors');
-const authRoutes = require('./routes/auth');
+const { router: authRouter } = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const territoryRoutes = require('./routes/territories');
 const friendsRoutes = require('./routes/friends'); 
@@ -38,7 +38,7 @@ app.use(session({
 
 
 
-app.use('/api/auth', authRoutes);             // auth
+app.use('/api/auth', authRouter);             // auth
 app.use('/api/user', userRoutes);             // user
 app.use('/api/territories', territoryRoutes); // map
 app.use('/api/friends', friendsRoutes);       // friends

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database'); // Using your existing database config
 const { auth } = require('./auth'); // Import auth from your existing auth routes
+console.log('DEBUG auth type in territories:', typeof auth);
 
 
 // In backend/routes/territories.js 
