@@ -1,11 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '../constants/Colors';
-import { friendsAPI, FriendRequest } from '../services/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { FriendRequest, friendsAPI } from '../services/api';
 
 export default function PendingRequestsScreen() {
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
@@ -16,14 +23,14 @@ export default function PendingRequestsScreen() {
     setLoading(true);
     setError(null);
     try {
-      const result = await friendsAPI.getPendingRequests();
-      if (result.success) {
-        setPendingRequests(result.pending_requests);
-      } else {
-        setError(result.error || 'Failed to fetch pending requests.');
-      }
+      // getPendingRequests returns FriendRequest[]
+      const requests = await friendsAPI.getPendingRequests();
+      setPendingRequests(requests);
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred while fetching requests.');
+      setError(
+        err?.message ||
+          'An unexpected error occurred while fetching requests.',
+      );
     } finally {
       setLoading(false);
     }
@@ -32,21 +39,21 @@ export default function PendingRequestsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchPendingRequests();
-    }, [fetchPendingRequests])
+    }, [fetchPendingRequests]),
   );
 
   const handleAcceptRequest = async (friendshipId: string) => {
     setLoading(true);
     try {
+      // acceptRequest throws on non-2xx, so reaching here means success
       const result = await friendsAPI.acceptRequest(friendshipId);
-      if (result.success) {
-        Alert.alert('Success', result.message || 'Friend request accepted.');
-        fetchPendingRequests(); // Refresh the list
-      } else {
-        Alert.alert('Error', result.error || 'Failed to accept friend request.');
-      }
+      Alert.alert('Success', result.message || 'Friend request accepted.');
+      fetchPendingRequests(); // Refresh the list
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'An unexpected error occurred.');
+      Alert.alert(
+        'Error',
+        err?.message || 'An unexpected error occurred while accepting.',
+      );
     } finally {
       setLoading(false);
     }
@@ -56,14 +63,13 @@ export default function PendingRequestsScreen() {
     setLoading(true);
     try {
       const result = await friendsAPI.rejectRequest(friendshipId);
-      if (result.success) {
-        Alert.alert('Success', result.message || 'Friend request rejected.');
-        fetchPendingRequests(); // Refresh the list
-      } else {
-        Alert.alert('Error', result.error || 'Failed to reject friend request.');
-      }
+      Alert.alert('Success', result.message || 'Friend request rejected.');
+      fetchPendingRequests(); // Refresh the list
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'An unexpected error occurred.');
+      Alert.alert(
+        'Error',
+        err?.message || 'An unexpected error occurred while rejecting.',
+      );
     } finally {
       setLoading(false);
     }
@@ -74,7 +80,11 @@ export default function PendingRequestsScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={Colors.light.secondary}
+            />
           </Pressable>
           <Text style={styles.title}>Pending Requests</Text>
         </View>
@@ -91,7 +101,11 @@ export default function PendingRequestsScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={Colors.light.secondary}
+            />
           </Pressable>
           <Text style={styles.title}>Pending Requests</Text>
         </View>
@@ -109,7 +123,11 @@ export default function PendingRequestsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={Colors.light.secondary}
+          />
         </Pressable>
         <Text style={styles.title}>Pending Requests</Text>
       </View>
@@ -126,14 +144,22 @@ export default function PendingRequestsScreen() {
                   style={[styles.actionBtn, styles.acceptButton]}
                   onPress={() => handleAcceptRequest(request.friendship_id)}
                 >
-                  <Ionicons name="checkmark" size={18} color={Colors.dark.text} />
+                  <Ionicons
+                    name="checkmark"
+                    size={18}
+                    color={Colors.dark.text}
+                  />
                   <Text style={styles.actionTextPrimary}>Accept</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.actionBtn, styles.rejectButton]}
                   onPress={() => handleRejectRequest(request.friendship_id)}
                 >
-                  <Ionicons name="close" size={18} color={Colors.light.secondary} />
+                  <Ionicons
+                    name="close"
+                    size={18}
+                    color={Colors.light.secondary}
+                  />
                   <Text style={styles.actionTextOutline}>Reject</Text>
                 </Pressable>
               </View>

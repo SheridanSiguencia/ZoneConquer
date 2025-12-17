@@ -1,11 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '../constants/Colors';
-import { friendsAPI, Friend } from '../services/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { Friend, friendsAPI } from '../services/api';
+
+const METERS_TO_MILES = 0.000621371;
 
 export default function FriendsListScreen() {
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -16,14 +25,13 @@ export default function FriendsListScreen() {
     setLoading(true);
     setError(null);
     try {
-      const result = await friendsAPI.getFriends();
-      if (result.success) {
-        setFriends(result.friends);
-      } else {
-        setError(result.error || 'Failed to fetch friends.');
-      }
+      // getFriends returns Friend[]
+      const list = await friendsAPI.getFriends();
+      setFriends(list);
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred while fetching friends.');
+      setError(
+        err?.message || 'An unexpected error occurred while fetching friends.',
+      );
     } finally {
       setLoading(false);
     }
@@ -32,40 +40,40 @@ export default function FriendsListScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchFriends();
-    }, [fetchFriends])
+    }, [fetchFriends]),
   );
 
-  const handleRemoveFriend = async (friendId: string, username: string) => {
+  const handleRemoveFriend = (friendId: string, username: string) => {
     Alert.alert(
       'Remove Friend',
       `Are you sure you want to remove ${username} from your friends?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
+          style: 'destructive',
           onPress: async () => {
             setLoading(true);
             try {
               const result = await friendsAPI.removeFriend(friendId);
-              if (result.success) {
-                Alert.alert('Success', result.message || `${username} removed.`);
-                fetchFriends(); // Refresh the list
-              } else {
-                Alert.alert('Error', result.error || `Failed to remove ${username}.`);
-              }
+              Alert.alert(
+                'Success',
+                result.message || `${username} removed.`,
+              );
+              fetchFriends();
             } catch (err: any) {
-              Alert.alert('Error', err.message || 'An unexpected error occurred.');
+              Alert.alert(
+                'Error',
+                err?.message ||
+                  `An unexpected error occurred while removing ${username}.`,
+              );
             } finally {
               setLoading(false);
             }
           },
-          style: 'destructive',
         },
       ],
-      { cancelable: true }
+      { cancelable: true },
     );
   };
 
@@ -74,7 +82,11 @@ export default function FriendsListScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={Colors.light.secondary}
+            />
           </Pressable>
           <Text style={styles.title}>My Friends</Text>
         </View>
@@ -91,7 +103,11 @@ export default function FriendsListScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={Colors.light.secondary}
+            />
           </Pressable>
           <Text style={styles.title}>My Friends</Text>
         </View>
@@ -109,36 +125,64 @@ export default function FriendsListScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={Colors.light.secondary} />
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={Colors.light.secondary}
+          />
         </Pressable>
         <Text style={styles.title}>My Friends</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
         {friends.length === 0 ? (
-          <Text style={styles.noFriendsText}>You have no friends yet. Send a request!</Text>
+          <Text style={styles.noFriendsText}>
+            You have no friends yet. Send a request!
+          </Text>
         ) : (
-          friends.map((friend) => (
-            <View key={friend.user_id} style={styles.friendCard}>
-              <View style={styles.friendInfo}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{friend.username[0].toUpperCase()}</Text>
+          friends.map((friend) => {
+            // weekly_distance comes from DB; may be null/undefined or string
+            const weeklyMeters =
+              friend.weekly_distance != null
+                ? Number(friend.weekly_distance)
+                : 0;
+            const weeklyMiles = weeklyMeters * METERS_TO_MILES;
+
+            const zones =
+              friend.territories_owned != null
+                ? Number(friend.territories_owned)
+                : 0;
+
+            return (
+              <View key={friend.user_id} style={styles.friendCard}>
+                <View style={styles.friendInfo}>
+                  <View className="avatar" style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {friend.username[0]?.toUpperCase()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.friendUsername}>{friend.username}</Text>
+                    <Text style={styles.friendStats}>
+                      {weeklyMiles.toFixed(1)} mi this week • {zones} zones
+                    </Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.friendUsername}>{friend.username}</Text>
-                  <Text style={styles.friendStats}>
-                    {friend.weekly_distance.toFixed(1)} mi this week • {friend.territories_owned} zones
-                  </Text>
-                </View>
+                <Pressable
+                  style={styles.removeButton}
+                  onPress={() =>
+                    handleRemoveFriend(friend.user_id, friend.username)
+                  }
+                >
+                  <Ionicons
+                    name="person-remove"
+                    size={20}
+                    color={Colors.light.secondary}
+                  />
+                </Pressable>
               </View>
-              <Pressable
-                style={styles.removeButton}
-                onPress={() => handleRemoveFriend(friend.user_id, friend.username)}
-              >
-                <Ionicons name="person-remove" size={20} color={Colors.light.red[500]} />
-              </Pressable>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
