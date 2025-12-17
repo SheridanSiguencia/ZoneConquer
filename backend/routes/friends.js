@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { auth } = require('./auth'); // Use your existing auth middleware
+const { auth } = require('./auth'); 
 
 // Send friend request
 router.post('/send-request', auth, async (req, res) => {

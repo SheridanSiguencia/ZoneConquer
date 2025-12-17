@@ -229,7 +229,7 @@ export const userAPI = {
   async updateDistance(
     distanceMiles: number,
   ): Promise<{ success: boolean; stats: UserStats }> {
-    console.log('API: updateDistance called with', distanceMiles, 'miles');
+    // console.log('API: updateDistance called with', distanceMiles, 'miles');
     
     // Convert miles to meters before sending
     const distanceMeters = distanceMiles * 1609.34;
@@ -244,11 +244,10 @@ export const userAPI = {
       body: JSON.stringify({ distance_meters: distanceMeters }),
     });
   
-    console.log('API: updateDistance response status:', response.status);
+    //console.log('API: updateDistance response status:', response.status);
     
     if (!response.ok) {
-      // 🔥 CRITICAL: Get the actual error message
-      const errorText = await response.text(); // Read once
+      const errorText = await response.text(); 
       console.log('BACKEND ERROR TEXT:', errorText);
       
       try {
@@ -261,7 +260,7 @@ export const userAPI = {
     }
   
     const result = await response.json();
-    console.log('✅ API: updateDistance success:', result);
+    // console.log('API: updateDistance success:', result);
     return result;
   },
   async checkStreak(): Promise<{ success: boolean; stats: UserStats }> {

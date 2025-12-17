@@ -217,9 +217,9 @@ export default function HomeScreen() {
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle}>weekly miles</Text>
             <Text style={styles.sectionMeta}>
-              {Number(stats.weekly_distance || 0).toFixed(1)} /{' '}
-              {Number(stats.weekly_goal || 15).toFixed(0)} mi
-            </Text>
+            {Number(stats.weekly_distance || 0).toFixed(1)} /{' '}
+            {Number(stats.weekly_goal || 15).toFixed(0)} mi
+          </Text>
           </View>
           <View style={styles.progressTrack}>
             <View
