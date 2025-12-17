@@ -672,6 +672,7 @@ export default function MapScreen() {
   }
 
   async function mergeLoopIntoTerritory(loop: LatLng[]) {
+    console.log('[mergeLoopIntoTerritory] START, loop length:', loop.length);
     if (loop.length < 3) return;
   
     // Create loop polygon
@@ -680,12 +681,16 @@ export default function MapScreen() {
     ]);
     const loopPoly = turf.polygon([ring]) as TerritoryFeature;
     const loopArea = turf.area(loopPoly);
-  
+    
+    console.log('[mergeLoopIntoTerritory] Loop area:', loopArea, 'm²');
+    
     // Check against ALL territories in database
+    console.log('[mergeLoopIntoTerritory] Checking connection...');
     const {territoryId, connected} = await checkLoopConnection(loopPoly);
+    console.log('[mergeLoopIntoTerritory] Connection result:', { territoryId, connected });
     
     if (connected && territoryId) {
-      console.log('[territory] Loop is CONNECTED to territory:', territoryId);
+      console.log('[mergeLoopIntoTerritory] Loop is CONNECTED to territory:', territoryId);
       
       // Get the territory from allTerritories
       const existingTerritory = allTerritories.find(t => t.territory_id === territoryId);
@@ -714,7 +719,7 @@ export default function MapScreen() {
       }
     } else {
       // No connection found - create new territory
-      console.log('[territory] No connection found, creating new territory');
+      console.log('[mergeLoopIntoTerritory] No connection found, creating new territory');
       const newTerritoryId = await saveNewTerritoryToDB(loop, loopArea);
       if (newTerritoryId) {
         setCurrentTerritoryId(newTerritoryId);
@@ -774,46 +779,68 @@ export default function MapScreen() {
   }
 
   // connection check function
-  async function checkLoopConnection(loopPoly: TerritoryFeature): Promise<{territoryId: string | null, connected: boolean}> {
-    if (!user || allTerritories.length === 0) {
-      return {territoryId: null, connected: false};
-    }
-    
-    for (const dbTerritory of allTerritories) {
-      // Only check user's own territories
-      if (dbTerritory.user_id !== user.user_id) continue;
-      
-      try {
-        // Get loop points from the GeoJSON polygon
-        const loopPositions = loopPoly.geometry.coordinates[0]; // This is Position[]
-        const territoryPoints = dbTerritory.coordinates[0];
-        
-        // Check if any loop point is close to any territory point
-        for (const loopPosition of loopPositions) {
-          // loopPosition is [lng, lat]
-          const [loopLng, loopLat] = loopPosition as [number, number];
-          
-          for (const territoryPoint of territoryPoints) {
-            const distance = haversineMeters(
-              { latitude: loopLat, longitude: loopLng },
-              { latitude: territoryPoint.latitude, longitude: territoryPoint.longitude }
-            );
-            
-            // If any point is within 10m, consider connected
-            if (distance < 10) {
-              console.log('[connection-check] Connected! Distance:', distance.toFixed(2), 'm');
-              return {territoryId: dbTerritory.territory_id, connected: true};
-            }
-          }
-        }
-        
-      } catch (error) {
-        console.warn(`Error checking territory ${dbTerritory.territory_id}:`, error);
-      }
-    }
-    
+  async function checkLoopConnection(loopPoly: TerritoryFeature): 
+  Promise<{territoryId: string | null, connected: boolean}> {
+  
+  console.log('[connection-check] START - Checking loop against', allTerritories.length, 'territories');
+  
+  if (!user || allTerritories.length === 0) {
+    console.log('[connection-check] No user or no territories');
     return {territoryId: null, connected: false};
   }
+  
+  for (const dbTerritory of allTerritories) {
+    // Only check user's own territories
+    if (dbTerritory.user_id !== user.user_id) {
+      console.log('[connection-check] Skipping territory owned by different user:', dbTerritory.user_id);
+      continue;
+    }
+    
+    console.log('[connection-check] Checking territory:', dbTerritory.territory_id);
+    
+    try {
+      // Convert database territory to Turf polygon
+      const territoryCoords = dbTerritory.coordinates[0]; // Get first polygon ring
+      if (!territoryCoords || territoryCoords.length < 3) {
+        console.log('[connection-check] Territory has invalid coordinates');
+        continue;
+      }
+      
+      // Convert [LatLng] to [[lng, lat], [lng, lat], ...]
+      const ring: [number, number][] = territoryCoords.map(coord => 
+        [coord.longitude, coord.latitude]
+      );
+      
+      const territoryPoly = turf.polygon([ring]);
+      
+      // 2. Check if loop INTERSECTS with territory (touches at any point)
+      const intersects = turf.booleanIntersects(loopPoly, territoryPoly);
+      
+      // 3. Check if loop is WITHIN territory (completely inside)
+      const within = turf.booleanWithin(loopPoly, territoryPoly);
+      
+      console.log('[connection-check] Results:', {
+        territoryId: dbTerritory.territory_id,
+        intersects,
+        within,
+        loopPoints: loopPoly.geometry.coordinates[0].length,
+        territoryPoints: territoryCoords.length
+      });
+      
+      // 4. If they intersect OR loop is within territory, consider connected
+      if (intersects || within) {
+        console.log('[connection-check] CONNECTED to territory:', dbTerritory.territory_id);
+        return {territoryId: dbTerritory.territory_id, connected: true};
+      }
+      
+    } catch (error) {
+      console.warn(`[connection-check] Error checking territory ${dbTerritory.territory_id}:`, error);
+    }
+  }
+  
+  console.log('[connection-check] ❌ No connection found');
+  return {territoryId: null, connected: false};
+}
 
   // Helper for creating new territories
   const saveNewTerritoryToDB = async (
@@ -1110,7 +1137,7 @@ export default function MapScreen() {
   // ---------- handle a newly observed point ----------
 
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
-    console.log("Calling handleNewPoint")
+    // console.log("Calling handleNewPoint")
     const t = Date.now();
     let accepted = false;
     const prevForCut = current;
@@ -1132,7 +1159,7 @@ export default function MapScreen() {
       const tooLarge = delta > 200; // spikes
   
       if (!badAccuracy && !tooSmall && !tooLarge) {
-        console.log('Distance moved:', delta.toFixed(2), 'meters');
+        //console.log('Distance moved:', delta.toFixed(2), 'meters');
         const xy = toXY(p);
         xyRef.current = [...xyRef.current, xy];
         setDistanceMeters((d) => d + delta);
@@ -1174,9 +1201,7 @@ export default function MapScreen() {
             console.log(
               '[loop-debug] BEFORE MERGE path length',
               xyRef.current.length,
-            );
-  
-            // MERGE THE LOOP
+            )
             mergeLoopIntoTerritory(loop);
   
             // Reset path to ONLY current point
