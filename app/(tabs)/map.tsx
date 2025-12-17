@@ -135,8 +135,7 @@ export default function MapScreen() {
   };
 
     const [isTracking, setIsTracking] = useState(false);
-  // raw loops for stats/debug only
-  const [loops, setLoops] = useState<LatLng[][]>([]);
+
   // merged territory + area;
   const [territory, setTerritory] =
     useState<TerritoryFeature | null>(null);
@@ -171,9 +170,7 @@ export default function MapScreen() {
 
   const sessionsRef = useRef<WalkSession[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
-  // Paper.io tail logic: track in/out-of-territory + the current "tail"
-  const lastInsideRef = useRef<boolean>(false);
-  const tailRef = useRef<LatLng[]>([]);
+
 
   // Paper.io cut state (leaving & re-entering territory)
   const cutStateRef = useRef<{
@@ -683,32 +680,6 @@ export default function MapScreen() {
 
   // ---------- merge loops into territory (Paper.io blob) ----------
 
-  // helper: extract plain Polygon geometries from the current territory
-  function extractPolygons(
-    t: TerritoryFeature | null,
-  ): GeoPolygon[] {
-    if (!t || !t.geometry) return [];
-
-    const g = t.geometry;
-
-    if (g.type === 'Polygon') {
-      return [g];
-    }
-
-    if (g.type === 'MultiPolygon') {
-      return g.coordinates.map(
-        (coords) =>
-          ({
-
-            type: 'Polygon',
-            coordinates: coords,
-          } as GeoPolygon),
-      );
-    }
-
-    return [];
-  }
-
   async function mergeLoopIntoTerritory(loop: LatLng[]) {
     console.log('[mergeLoopIntoTerritory] START, loop length:', loop.length);
     if (loop.length < 3) return;
@@ -925,7 +896,7 @@ export default function MapScreen() {
     if (state.isOutside && state.path.length > 0) {
       logOutsidePath(state.path, 'processPaperCut');
     }
-    
+
     // LEAVING territory (inside → outside)
     if (!state.isOutside && insidePrev && !insideNow) {
       console.log('[processPaperCut] LEAVING territory');
@@ -1189,114 +1160,7 @@ export default function MapScreen() {
     return cleanSegment;
   }
   
-  // Helper function to build tail loops with border segments
-  function buildTailLoopWithBorder(
-    exitPoint: LatLng,
-    entryPoint: LatLng,
-    outsidePath: LatLng[],
-    territory: Territory
-  ): LatLng[] | null {
-    console.log('[buildTailLoopWithBorder] Building loop with territory border');
-    
-    if (!territory || territory.coordinates.length === 0) {
-      console.log('[buildTailLoopWithBorder] No territory coordinates');
-      return null;
-    }
-    
-    // Get territory polygon coordinates
-    const territoryRing = territory.coordinates[0];
-    if (territoryRing.length < 3) {
-      console.log('[buildTailLoopWithBorder] Territory ring too short');
-      return null;
-    }
-    
-    // Convert territory ring to LatLng[]
-    const borderPoints: LatLng[] = territoryRing.map(coord => ({
-      latitude: coord.latitude,
-      longitude: coord.longitude,
-    }));
-    
-    // Ensure the border points form a closed polygon
-    if (!almostEqualLatLng(borderPoints[0], borderPoints[borderPoints.length - 1])) {
-      borderPoints.push(borderPoints[0]);
-    }
-    
-    // Find nearest points on border for exit and entry
-    const exitIndex = findNearestBorderPointIndex(borderPoints, exitPoint);
-    const entryIndex = findNearestBorderPointIndex(borderPoints, entryPoint);
-    
-    if (exitIndex === -1 || entryIndex === -1) {
-      console.log('[buildTailLoopWithBorder] Could not find border points');
-      return null;
-    }
-    
-    console.log('[buildTailLoopWithBorder] Border indices:', { exitIndex, entryIndex });
-    
-    // Build complete loop: exit → outside path → entry → border segment back to exit
-    const completeLoop: LatLng[] = [];
-    
-    // 1. Start at exit point
-    completeLoop.push(exitPoint);
-    
-    // 2. Add outside path (skip duplicates)
-    for (const point of outsidePath) {
-      const lastPoint = completeLoop[completeLoop.length - 1];
-      if (!almostEqualLatLng(point, lastPoint)) {
-        completeLoop.push(point);
-      }
-    }
-    
-    // 3. Add entry point if not already there
-    const lastPoint = completeLoop[completeLoop.length - 1];
-    if (!almostEqualLatLng(entryPoint, lastPoint)) {
-      completeLoop.push(entryPoint);
-    }
-    
-    // 4. Add border segment from entry back to exit
-    const borderSegment = getBorderSegment(borderPoints, entryIndex, exitIndex);
-    
-    // Skip the first point of border segment (it's the entry point)
-    for (let i = 1; i < borderSegment.length; i++) {
-      const point = borderSegment[i];
-      const lastPoint = completeLoop[completeLoop.length - 1];
-      if (!almostEqualLatLng(point, lastPoint)) {
-        completeLoop.push(point);
-      }
-    }
-    
-    // 5. Ensure loop is closed (first and last point should be the same)
-    if (!almostEqualLatLng(completeLoop[0], completeLoop[completeLoop.length - 1])) {
-      completeLoop.push(completeLoop[0]);
-    }
-    
-    // 6. Check if this forms a valid polygon (at least 4 unique points)
-    const uniquePoints = new Set(completeLoop.map(p => `${p.latitude},${p.longitude}`));
-    if (uniquePoints.size < 3) {
-      console.log('[buildTailLoopWithBorder] Loop has only', uniquePoints.size, 'unique points - degenerate');
-      return null;
-    }
-    
-    console.log('[buildTailLoopWithBorder] Built loop with', completeLoop.length, 'points (', uniquePoints.size, 'unique)');
-    
-    // 7. Debug: Calculate and log area immediately
-    try {
-      const ring: [number, number][] = completeLoop.map(p => 
-        [p.longitude, p.latitude] as [number, number]
-      );
-      const poly = turf.polygon([ring]);
-      const area = turf.area(poly);
-      console.log('[buildTailLoopWithBorder] Immediate area check:', area, 'm²');
-      
-      if (area < 1) { // Less than 1 m² is basically zero
-        console.log('[buildTailLoopWithBorder] Area too small, loop is degenerate');
-        return null;
-      }
-    } catch (error) {
-      console.warn('[buildTailLoopWithBorder] Error checking area:', error);
-    }
-    
-    return completeLoop;
-  }
+  
   
   // Helper to find nearest point on border
   function findNearestBorderPointIndex(borderPoints: LatLng[], target: LatLng): number {
@@ -1313,58 +1177,7 @@ export default function MapScreen() {
     
     return minIndex;
   }
-  
-
-
-  // Helper: Find intersection point with border using 5m buffer for tolerance
-  function findBorderIntersection(prev: LatLng, curr: LatLng, poly: GeoPolygon): LatLng | null {
-    // Just use Turf's lineIntersect - it works fine
-    console.log('Calling findBorderIntersection')
-    const seg = turf.lineString([
-      [prev.longitude, prev.latitude],
-      [curr.longitude, curr.latitude]
-    ]);
-    
-    const intersection = turf.lineIntersect(seg, poly);
-    
-    if (intersection.features.length > 0) {
-      const [lng, lat] = intersection.features[0].geometry.coordinates;
-      return { latitude: lat, longitude: lng };
-    }
-    
-    // No intersection found
-    return null;
-  }
-
-  // Check if point is inside ANY of user's territories
-  function isPointInAnyUserTerritory(point: LatLng): boolean {
-    console.log('[isPointInAnyUserTerritory]: is called');
-    if (!user || allTerritories.length === 0) return false;
-    
-    const pt = turf.point([point.longitude, point.latitude]);
-    
-    for (const dbTerritory of allTerritories) {
-      if (dbTerritory.user_id !== user.user_id) continue;
-      
-      const territoryCoords = dbTerritory.coordinates[0];
-      if (!territoryCoords || territoryCoords.length < 3) continue;
-      
-      const ring: [number, number][] = territoryCoords.map(coord => 
-        [coord.longitude, coord.latitude]
-      );
-      
-      try {
-        const territoryPoly = turf.polygon([ring]);
-        if (turf.booleanPointInPolygon(pt, territoryPoly)) {
-          return true;
-        }
-      } catch (error) {
-        console.warn('Error checking point in territory:', error);
-      }
-    }
-    
-    return false;
-  }
+ 
 
   // Find which specific territory contains a point
   function findContainingTerritory(point: LatLng): Territory | null {
@@ -1395,107 +1208,7 @@ export default function MapScreen() {
     
     return null;
   }
-
-  // Convert database territory to GeoPolygon
-  function territoryToGeoPolygon(territory: Territory): GeoPolygon {
-    console.log('territoryToGeoPolygon called');
-    const ring: [number, number][] = territory.coordinates[0].map(coord => 
-      [coord.longitude, coord.latitude]
-    );
-    
-    return {
-      type: 'Polygon',
-      coordinates: [ring]
-    };
-  }
   
-  function buildCutLoop(
-    exitPoint: LatLng,
-    entryPoint: LatLng,
-    cutPath: LatLng[],
-    poly: GeoPolygon,
-  ): LatLng[] | null {
-    console.log('Build Cut Loop function called');
-    const ring = poly.coordinates[0];
-    if (!ring || ring.length < 4) return null;
-    
-    // Convert ring coordinates to LatLng[]
-    const ringLL: LatLng[] = ring.map(([lng, lat]) => ({
-      latitude: lat,
-      longitude: lng,
-    }));
-    
-    const idxExit = nearestRingIndex(ringLL, exitPoint);
-    const idxEntry = nearestRingIndex(ringLL, entryPoint);
-    if (idxExit === -1 || idxEntry === -1) return null;
-    
-    const n = ringLL.length;
-    
-    // entry → exit going forward along ring
-    const forward: LatLng[] = [];
-    let i = idxEntry;
-    while (true) {
-      forward.push(ringLL[i]);
-      if (i === idxExit) break;
-      i = (i + 1) % n;
-    }
-    
-    // entry → exit going backward along ring
-    const backward: LatLng[] = [];
-    i = idxEntry;
-    while (true) {
-      backward.push(ringLL[i]);
-      if (i === idxExit) break;
-      i = (i - 1 + n) % n;
-    }
-    
-    // Choose the shorter path along the border
-    const borderPath = forward.length <= backward.length ? forward : backward;
-    
-    // Ensure cutPath starts at exit and ends at entry
-    const path: LatLng[] = [...cutPath];
-    if (!almostEqualLatLng(path[0], exitPoint)) {
-      path.unshift(exitPoint);
-    }
-    if (!almostEqualLatLng(path[path.length - 1], entryPoint)) {
-      path.push(entryPoint);
-    }
-    
-    // Build the complete loop: exit → entry via outside path → entry → exit along border
-    const loop: LatLng[] = [];
-    
-    // exit → entry via outside path
-    for (let k = 0; k < path.length; k++) {
-      loop.push(path[k]);
-    }
-    
-    // entry → exit along territory border (skip first, which ≈ entry)
-    for (let k = 1; k < borderPath.length; k++) {
-      loop.push(borderPath[k]);
-    }
-    
-    // close ring
-    if (!almostEqualLatLng(loop[0], loop[loop.length - 1])) {
-      loop.push(loop[0]);
-    }
-    
-    return loop;
-  }
-
-  function nearestRingIndex(ring: LatLng[], target: LatLng): number {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    for (let i = 0; i < ring.length; i++) {
-      const dLat = ring[i].latitude - target.latitude;
-      const dLon = ring[i].longitude - target.longitude;
-      const d = dLat * dLat + dLon * dLon;
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
-    }
-    return bestIdx;
-  }
 
   function almostEqualLatLng(a: LatLng, b: LatLng, eps = 1e-6) {
     return (
@@ -1504,73 +1217,11 @@ export default function MapScreen() {
     );
   }
 
-  // ---------- Paper.io-style tail → territory merge ----------
-
-  const applyPaperIoTailLogic = (p: LatLng) => {
-    // Use the new helper to check against ALL territories
-    const isInside = isPointInAnyUserTerritory(p);
-    const wasInside = lastInsideRef.current;
-    
-    console.log('[paperio-tail-state]', {
-      lat: p.latitude.toFixed(6),
-      lon: p.longitude.toFixed(6),
-      wasInside,
-      inside: isInside,
-      totalTerritories: allTerritories.length
-    });
-    
-    // 1) Leaving territory → start a new tail
-    if (wasInside && !isInside) {
-      tailRef.current = [p];
-      console.log('[paperio] Starting tail (leaving territory)');
-    }
-    // 2) Still outside → grow tail
-    else if (!wasInside && !isInside) {
-      tailRef.current.push(p);
-    }
-    // 3) Re-entering territory → close the tail and merge
-    else if (!wasInside && isInside) {
-      console.log('[paperio] Re-entering territory, closing tail');
-      
-      if (tailRef.current.length >= 3) {
-        const rawLoop = [...tailRef.current];
-        
-        // 🔒 Close the loop by repeating the first point at the end
-        const loop = almostEqualLatLng(
-          rawLoop[0],
-          rawLoop[rawLoop.length - 1],
-        )
-          ? rawLoop
-          : [...rawLoop, rawLoop[0]];
-        
-        // Re-use the same validation as self-intersection loops
-        if (validateLoop(loop)) {
-          const areaM2 = polygonArea(loop.map((ll) => toXY(ll)));
-          addLoopSummary(areaM2);
-          
-          console.log('[paperio-loop]', {
-            points: loop.length,
-            area: areaM2,
-          });
-          
-          // This will automatically find and merge with the territory
-          mergeLoopIntoTerritory(loop);
-          
-          // 🧹 clear old trails after a capture, keep only current point
-          hardResetBreadcrumb(p);
-        }
-      }
-      
-      // Tail is consumed once we've merged (or decided not to)
-      tailRef.current = [];
-    }
-    
-    // Update state for the next step
-    lastInsideRef.current = isInside;
-  };
+  
 
   // ---------- handle a newly observed point ----------
 
+  // This is where all the magic happens 
   const handleNewPoint = (p: LatLng, accuracy: number = 5) => {
     const t = Date.now();
     const prevPoint = current;
@@ -2024,70 +1675,43 @@ export default function MapScreen() {
   // ---------- render helpers ----------
 
   function renderTerritory() {
-    // Preferred: single merged territory
-    if (territory && territory.geometry) {
-      const geom = territory.geometry;
-
-      if (geom.type === 'Polygon') {
-        const outerRing = geom.coordinates[0];
-        const coords: LatLng[] = outerRing.map(
-          ([lng, lat]) => ({
-
-            latitude: lat,
-            longitude: lng,
-          }),
-        );
-
+    // Instead of using local territory state, use ALL territories from database
+    if (!user || allTerritories.length === 0) {
+      return null;
+    }
+  
+    // Filter to only show current user's territories
+    const userTerritories = allTerritories.filter(t => t.user_id === user.user_id);
+    
+    if (userTerritories.length === 0) {
+      return null;
+    }
+  
+    return userTerritories.map((territory, index) => {
+      try {
+        // Territory coordinates are already in LatLng[][] format
+        const polygonCoordinates = territory.coordinates[0];
+        
+        if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
+          console.warn(`Territory ${territory.territory_id} has invalid coordinates`);
+          return null;
+        }
+  
         return (
           <MapPolygon
-            coordinates={coords}
+            key={`user-territory-${territory.territory_id}-${index}`}
+            coordinates={polygonCoordinates}
             strokeWidth={3}
             strokeColor="rgba(34,197,94,0.95)"
             fillColor="rgba(34,197,94,0.6)"
             zIndex={1000}
           />
         );
+      } catch (error) {
+        console.error('Error rendering territory:', error);
+        return null;
       }
-
-      if (geom.type === 'MultiPolygon') {
-        return geom.coordinates.map((poly, idx) => {
-          const outerRing = poly[0];
-          const coords: LatLng[] = outerRing.map(
-            ([lng, lat]) => ({
-              latitude: lat,
-              longitude: lng,
-            }),
-          );
-
-          return (
-            <MapPolygon
-              key={`territory-${idx}`}
-              coordinates={coords}
-              strokeWidth={3}
-              strokeColor="rgba(34,197,94,0.95)"
-              fillColor="rgba(34,197,94,0.6)"
-              zIndex={1000}
-            />
-          );
-        });
-      }
-    }
-
-    // Fallback: show each captured loop as its own polygon
-    if (!territory && loops.length) {
-      return loops.map((loop, idx) => (
-        <MapPolygon
-          key={`loop-fallback-${idx}`}
-          coordinates={loop}
-          strokeWidth={3}
-          strokeColor="rgba(34,197,94,0.95)"
-          fillColor="rgba(34,197,94,0.6)"
-          zIndex={1000}
-        />
-      ));
-    }
-
-    return null;
+    });
   }
 
   function renderFriendTerritories() {
@@ -2153,24 +1777,6 @@ export default function MapScreen() {
         
         {/* Display friends territories */}
         {renderFriendTerritories()}
-
-        {/* Database territories */}
-        {allTerritories.map((territory, i) => {
-          const polygonCoordinates = territory.coordinates[0];
-          if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
-            return null;
-          }
-          return (
-            <MapPolygon
-              key={`db-territory-${territory.territory_id}-${i}`}
-              coordinates={polygonCoordinates}
-              strokeWidth={2}
-              strokeColor="rgba(59,130,246,0.8)" // Blue for DB territories
-              fillColor="rgba(59,130,246,0.2)"
-              zIndex={500} // Below the merged territory (zIndex 1000)
-            />
-          );
-        })}
       </MapView>
 
       {/* Arrow pad (for testing) */}
@@ -2230,7 +1836,6 @@ export default function MapScreen() {
             <Text style={styles.hudMeta}>
               territory{' '}
               {(totalAreaM2 * 0.000247105).toFixed(2)} acres ·
-              loops {loops.length}
             </Text>
           </View>
         </View>
@@ -2376,12 +1981,11 @@ export default function MapScreen() {
               stopSim();
               setPath(current ? [current] : []);
               xyRef.current = current ? [toXY(current)] : [];
-              setLoops([]);
+              
               setDistanceMeters(0);
               setTotalAreaM2(0);
               setTerritory(null);
-              lastInsideRef.current = false;
-              tailRef.current = [];
+              
               setHasUnfinishedRide(false);
               resetCutState();
               setCurrentTerritoryId(null); // resets the current territory id 
