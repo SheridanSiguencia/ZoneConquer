@@ -23,7 +23,7 @@ export default function AddFriendScreen() {
         Alert.alert('Success', result.message || `Friend request sent to ${username}.`);
         setUsername('');
       } else {
-        Alert.alert('Error', result.error || 'Failed to send friend request.');
+        Alert.alert('Error', result.message || 'Failed to send friend request.');
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'An unexpected error occurred.');
