@@ -1041,7 +1041,7 @@ export default function MapScreen() {
     }
   }
   
-  // 5. **CRITICAL FIX: Ensure the loop is properly closed**
+  // 5. Ensure the loop is properly closed
   // Remove any remaining consecutive duplicates
   const finalLoop: LatLng[] = [];
   for (let i = 0; i < loop.length; i++) {
@@ -1050,7 +1050,7 @@ export default function MapScreen() {
     }
   }
   
-  // **FIX: Ensure first and last points are the same**
+  // Ensure first and last points are the same
   const first = finalLoop[0];
   const last = finalLoop[finalLoop.length - 1];
   
@@ -1065,7 +1065,7 @@ export default function MapScreen() {
     return null;
   }
   
-  // 7. **NEW: Double-check the ring is closed**
+  // 7. NEW: Double-check the ring is closed
   // Create the ring for Turf.js
   const ring: [number, number][] = finalLoop.map(p => 
     [p.longitude, p.latitude] as [number, number]
@@ -1148,7 +1148,8 @@ export default function MapScreen() {
   }
 
   function getBorderSegment(borderPoints: LatLng[], startIdx: number, endIdx: number): LatLng[] {
-    console.log('Calling getBorderSegment function start')
+    console.log('[getBorderSegment] Called with:', { startIdx, endIdx, totalPoints: borderPoints.length });
+    
     const segment: LatLng[] = [];
     const n = borderPoints.length;
     
@@ -1159,30 +1160,36 @@ export default function MapScreen() {
     // Go in the shorter direction
     let currentIdx = startIdx;
     const step = forwardDistance <= backwardDistance ? 1 : -1;
-    const targetIdx = endIdx;
     
     do {
-      segment.push(borderPoints[currentIdx]);
+      const point = borderPoints[currentIdx];
+      
+      // Skip consecutive duplicates
+      if (segment.length === 0 || !almostEqualLatLng(point, segment[segment.length - 1])) {
+        segment.push(point);
+      }
       
       // Move to next point
       currentIdx = (currentIdx + step + n) % n;
       
-      // Check if we've reached the target
-      if (currentIdx === targetIdx) {
-        segment.push(borderPoints[currentIdx]);
+      // Check if we've reached the target (or wrapped around)
+      if (currentIdx === endIdx) {
+        const endPoint = borderPoints[currentIdx];
+        if (!almostEqualLatLng(endPoint, segment[segment.length - 1])) {
+          segment.push(endPoint);
+        }
         break;
       }
-    } while (segment.length < n * 2); // Safety check
+    } while (segment.length < n * 2); // Safety check to prevent infinite loops
     
-    // Remove consecutive duplicates
-    const cleanSegment: LatLng[] = [];
-    for (let i = 0; i < segment.length; i++) {
-      if (i === 0 || !almostEqualLatLng(segment[i], segment[i - 1])) {
-        cleanSegment.push(segment[i]);
-      }
+    // **FIX: Ensure the segment doesn't have the same start and end point**
+    if (segment.length > 1 && almostEqualLatLng(segment[0], segment[segment.length - 1])) {
+      segment.pop(); // Remove the duplicate end point
     }
     
-    return cleanSegment;
+    console.log('[getBorderSegment] Final segment length:', segment.length);
+    
+    return segment;
   }
   
   
