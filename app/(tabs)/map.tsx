@@ -21,9 +21,9 @@ import MapView, {
   Polyline,
 } from 'react-native-maps';
 
-import { useUserStore } from '../../store/user';
+import { friendsAPI, FriendTerritory, Territory, territoryAPI } from '@/services/api';
 import { useFocusEffect } from '@react-navigation/native';
-import { friendsAPI, FriendTerritory, territoryAPI, Territory } from '@/services/api';
+import { useUserStore } from '../../store/user';
 
 
 import type {
@@ -1801,7 +1801,13 @@ export default function MapScreen() {
 
         {/* breadcrumb line */}
         {path.length > 1 && (
-          <Polyline coordinates={path} strokeWidth={4} />
+          <Polyline
+            coordinates={path}
+            strokeWidth={5}
+            strokeColor="rgba(248, 245, 235, 0.95)" // creamy white
+            lineCap="round"
+            lineJoin="round"
+          />
         )}
 
         {/* merged territory */}
