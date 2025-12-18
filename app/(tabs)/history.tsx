@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Polygon } from 'react-native-maps';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { territoryAPI, Territory } from '../../services/api';
 import Colors from '../../constants/Colors';
-
+import { useFocusEffect } from '@react-navigation/native';
+import React from 'react';
 export default function HistoryScreen() {
   // State for the trip history, loading state, and error state
   const [history, setHistory] = useState<Territory[]>([]);
@@ -15,19 +16,36 @@ export default function HistoryScreen() {
 
   // Fetch the trip history when the component mounts
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const tripHistory = await territoryAPI.getHistory();
-        setHistory(tripHistory);
-      } catch (err) {
-        setError('Failed to fetch trip history.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchHistory();
   }, []);
+
+  // ALSO fetch when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('History screen focused - refreshing territories');
+      fetchHistory();
+      return () => {
+        // Cleanup if needed (optional)
+        console.log('History screen unfocused');
+      };
+    }, [])
+  );
+
+  // Extract the fetch logic into a separate function
+  const fetchHistory = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const tripHistory = await territoryAPI.getHistory();
+      console.log('Fetched', tripHistory.length, 'territories');
+      setHistory(tripHistory);
+    } catch (err) {
+      console.error('Failed to fetch trip history:', err);
+      setError('Failed to fetch trip history.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Render a single trip card
   const renderTrip = ({ item }: { item: Territory }) => (
