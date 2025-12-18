@@ -1,8 +1,7 @@
 // services/api.ts - Your "API phone book"
 
 // Where your backend lives
-export const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:3000/api';
+export const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'https://zoneconquer.onrender.com/api';
 
 // Typescript definitions (what data looks like)
 export interface LoginData {
