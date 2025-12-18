@@ -961,118 +961,135 @@ export default function MapScreen() {
   }
 
   function createPaperIOLoop(
-    exitPoint: LatLng,
-    entryPoint: LatLng,
-    outsidePath: LatLng[],
-    territory: Territory
-  ): LatLng[] | null {
-    console.log('[createPaperIOLoop] Creating proper Paper.io loop');
-    
-    if (!territory || territory.coordinates.length === 0) {
-      return null;
+  exitPoint: LatLng,
+  entryPoint: LatLng,
+  outsidePath: LatLng[],
+  territory: Territory
+): LatLng[] | null {
+  console.log('[createPaperIOLoop] Creating proper Paper.io loop');
+  
+  if (!territory || territory.coordinates.length === 0) {
+    return null;
+  }
+  
+  // Get the territory border polygon
+  const borderPolygon = territory.coordinates[0];
+  if (borderPolygon.length < 3) {
+    return null;
+  }
+  
+  // Convert border to LatLng[]
+  const borderPoints: LatLng[] = borderPolygon.map(coord => ({
+    latitude: coord.latitude,
+    longitude: coord.longitude,
+  }));
+  
+  // Clean outside path: remove points too close to exit/entry
+  const cleanOutsidePath: LatLng[] = [];
+  for (const point of outsidePath) {
+    // Skip if too close to exit point
+    if (haversineMeters(point, exitPoint) < 1) continue;
+    // Skip if too close to entry point
+    if (haversineMeters(point, entryPoint) < 1) continue;
+    // Skip duplicates
+    if (cleanOutsidePath.length > 0 && 
+        haversineMeters(point, cleanOutsidePath[cleanOutsidePath.length - 1]) < 1) {
+      continue;
     }
-    
-    // Get the territory border polygon
-    const borderPolygon = territory.coordinates[0];
-    if (borderPolygon.length < 3) {
-      return null;
+    cleanOutsidePath.push(point);
+  }
+  
+  console.log('[createPaperIOLoop] Cleaned outside path:', cleanOutsidePath.length, 'points');
+  
+  // If outside path is too short, we can't create a valid loop
+  if (cleanOutsidePath.length < 2) {
+    console.log('[createPaperIOLoop] Outside path too short for valid loop');
+    return null;
+  }
+  
+  // Find nearest border points
+  const exitIndex = findNearestBorderPointIndex(borderPoints, exitPoint);
+  const entryIndex = findNearestBorderPointIndex(borderPoints, entryPoint);
+  
+  if (exitIndex === -1 || entryIndex === -1) {
+    return null;
+  }
+  
+  // Build the loop
+  const loop: LatLng[] = [];
+  
+  // 1. Start at exit point
+  loop.push(exitPoint);
+  
+  // 2. Add outside path
+  for (const point of cleanOutsidePath) {
+    loop.push(point);
+  }
+  
+  // 3. Add entry point
+  loop.push(entryPoint);
+  
+  // 4. Add border segment from entry back to exit
+  const borderSegment = getBorderSegment(borderPoints, entryIndex, exitIndex);
+  
+  // Add border segment (skip first since it's the entry point)
+  for (let i = 1; i < borderSegment.length; i++) {
+    // Skip duplicates
+    const lastPoint = loop[loop.length - 1];
+    if (!almostEqualLatLng(borderSegment[i], lastPoint)) {
+      loop.push(borderSegment[i]);
     }
-    
-    // Convert border to LatLng[]
-    const borderPoints: LatLng[] = borderPolygon.map(coord => ({
-      latitude: coord.latitude,
-      longitude: coord.longitude,
-    }));
-    
-    // Clean outside path: remove points too close to exit/entry
-    const cleanOutsidePath: LatLng[] = [];
-    for (const point of outsidePath) {
-      // Skip if too close to exit point
-      if (haversineMeters(point, exitPoint) < 1) continue;
-      // Skip if too close to entry point
-      if (haversineMeters(point, entryPoint) < 1) continue;
-      // Skip duplicates
-      if (cleanOutsidePath.length > 0 && 
-          haversineMeters(point, cleanOutsidePath[cleanOutsidePath.length - 1]) < 1) {
-        continue;
-      }
-      cleanOutsidePath.push(point);
+  }
+  
+  // 5. **CRITICAL FIX: Ensure the loop is properly closed**
+  // Remove any remaining consecutive duplicates
+  const finalLoop: LatLng[] = [];
+  for (let i = 0; i < loop.length; i++) {
+    if (i === 0 || !almostEqualLatLng(loop[i], loop[i - 1])) {
+      finalLoop.push(loop[i]);
     }
-    
-    console.log('[createPaperIOLoop] Cleaned outside path:', cleanOutsidePath.length, 'points');
-    
-    // If outside path is too short, we can't create a valid loop
-    if (cleanOutsidePath.length < 2) {
-      console.log('[createPaperIOLoop] Outside path too short for valid loop');
-      return null;
-    }
-    
-    // Find nearest border points
-    const exitIndex = findNearestBorderPointIndex(borderPoints, exitPoint);
-    const entryIndex = findNearestBorderPointIndex(borderPoints, entryPoint);
-    
-    if (exitIndex === -1 || entryIndex === -1) {
-      return null;
-    }
-    
-    // Build the loop
-    const loop: LatLng[] = [];
-    
-    // 1. Start at exit point
-    loop.push(exitPoint);
-    
-    // 2. Add outside path
-    for (const point of cleanOutsidePath) {
-      loop.push(point);
-    }
-    
-    // 3. Add entry point
-    loop.push(entryPoint);
-    
-    // 4. Add border segment from entry back to exit
-    const borderSegment = getBorderSegment(borderPoints, entryIndex, exitIndex);
-    
-    // Add border segment (skip first since it's the entry point)
-    for (let i = 1; i < borderSegment.length; i++) {
-      // Skip duplicates
-      const lastPoint = loop[loop.length - 1];
-      if (!almostEqualLatLng(borderSegment[i], lastPoint)) {
-        loop.push(borderSegment[i]);
-      }
-    }
-    
-    // 5. Ensure loop is closed
-    const first = loop[0];
-    const last = loop[loop.length - 1];
-    if (!almostEqualLatLng(first, last)) {
-      loop.push(first);
-    }
-    
-    // 6. Remove any remaining consecutive duplicates
-    const finalLoop: LatLng[] = [];
-    for (let i = 0; i < loop.length; i++) {
-      if (i === 0 || !almostEqualLatLng(loop[i], loop[i - 1])) {
-        finalLoop.push(loop[i]);
-      }
-    }
-    
-    // 7. Validate the loop
-    if (finalLoop.length < 4) {
-      console.log('[createPaperIOLoop] Loop too short after cleaning');
-      return null;
-    }
-    
-    // Calculate area for debugging
-    const ring: [number, number][] = finalLoop.map(p => 
-      [p.longitude, p.latitude] as [number, number]
-    );
+  }
+  
+  // **FIX: Ensure first and last points are the same**
+  const first = finalLoop[0];
+  const last = finalLoop[finalLoop.length - 1];
+  
+  if (!almostEqualLatLng(first, last)) {
+    console.log('[createPaperIOLoop] Adding closing point to complete polygon');
+    finalLoop.push({...first}); // Add a copy of the first point
+  }
+  
+  // 6. Validate the loop
+  if (finalLoop.length < 4) {
+    console.log('[createPaperIOLoop] Loop too short after cleaning');
+    return null;
+  }
+  
+  // 7. **NEW: Double-check the ring is closed**
+  // Create the ring for Turf.js
+  const ring: [number, number][] = finalLoop.map(p => 
+    [p.longitude, p.latitude] as [number, number]
+  );
+  
+  // Ensure first and last positions are equivalent for Turf.js
+  const ringFirst = ring[0];
+  const ringLast = ring[ring.length - 1];
+  
+  if (ringFirst[0] !== ringLast[0] || ringFirst[1] !== ringLast[1]) {
+    console.log('[createPaperIOLoop] WARNING: Ring not closed for Turf.js, closing it');
+    ring.push([...ringFirst]); // Close the ring
+  }
+  
+  try {
     const poly = turf.polygon([ring]);
     const area = turf.area(poly);
     
     console.log('[createPaperIOLoop] Final loop:', {
       points: finalLoop.length,
       area: area.toFixed(2) + ' m²',
-      uniquePoints: new Set(finalLoop.map(p => `${p.latitude},${p.longitude}`)).size
+      uniquePoints: new Set(finalLoop.map(p => `${p.latitude},${p.longitude}`)).size,
+      ringClosed: ring[0][0] === ring[ring.length - 1][0] && 
+                  ring[0][1] === ring[ring.length - 1][1]
     });
     
     if (area < MIN_AREA_M2) {
@@ -1081,7 +1098,15 @@ export default function MapScreen() {
     }
     
     return finalLoop;
+  } catch (error) {
+    console.error('[createPaperIOLoop] Error creating polygon:', error);
+    // Log the ring for debugging
+    console.log('[createPaperIOLoop] Problematic ring:', ring.map(([lng, lat]) => 
+      `${lat.toFixed(6)},${lng.toFixed(6)}`
+    ));
+    return null;
   }
+}
   
   function projectPointToBorder(point: LatLng, borderPoints: LatLng[]): LatLng | null {
     // Simple: find nearest border point
