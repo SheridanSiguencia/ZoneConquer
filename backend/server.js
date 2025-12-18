@@ -9,6 +9,8 @@ const userRoutes = require('./routes/user');
 const territoryRoutes = require('./routes/territories');
 const friendsRoutes = require('./routes/friends'); 
 const gamificationRoutes = require('./routes/gamification'); // Import gamification routes
+const leaderboardRoutes = require('./routes/leaderboard');
+
 const app = express();
 //  tiny logger to see every request
 app.use((req, res, next) => {
@@ -43,6 +45,8 @@ app.use('/api/user', userRoutes);             // user
 app.use('/api/territories', territoryRoutes); // map
 app.use('/api/friends', friendsRoutes);       // friends
 app.use('/api/gamification', gamificationRoutes); // gamification
+app.use('/api/leaderboard', leaderboardRoutes); // leaderboard
+
 
 // Test route
 app.get('/api/test', (req, res) => {

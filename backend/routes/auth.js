@@ -249,6 +249,27 @@ const auth = (req, res, next) => {
   });
 };
 
+// --- ME (who am I) -----------------------------------------
+router.get('/me', auth, (req, res) => {
+  res.json({
+    success: true,
+    user_id: req.session.user_id,
+    username: req.session.username,
+  });
+});
+
+// --- LOGOUT (optional but useful) ---------------------------
+router.post('/logout', auth, (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ success: false, error: 'Logout failed' });
+    }
+    res.clearCookie('connect.sid'); // default cookie name for express-session
+    res.json({ success: true });
+  });
+});
+
 
 module.exports = {
   router,

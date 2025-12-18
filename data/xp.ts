@@ -8,9 +8,9 @@ const SQ_METERS_PER_SQ_MILE = 2_589_988.110336;
 const M2_TO_SQMI = 1 / SQ_METERS_PER_SQ_MILE;
 
 // Tune this to control how big the numbers look.
-// 1000 XP per square mile ---> typical players end up in the hundreds / thousands.
+// 10000 XP per square mile ---> typical players end up in the hundreds / thousands.
 
-const XP_PER_SQ_MILE = 1000;
+const XP_PER_SQ_MILE = 10000;
 
 export function areaM2ToXp(areaSqMeters: number): number {
   if (!areaSqMeters || areaSqMeters <= 0) return 0;
