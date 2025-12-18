@@ -1707,7 +1707,6 @@ export default function MapScreen() {
   // ---------- render helpers ----------
 
   function renderTerritory() {
-    // Instead of using local territory state, use ALL territories from database
     if (!user || allTerritories.length === 0) {
       return null;
     }
@@ -1721,7 +1720,6 @@ export default function MapScreen() {
   
     return userTerritories.map((territory, index) => {
       try {
-        // Territory coordinates are already in LatLng[][] format
         const polygonCoordinates = territory.coordinates[0];
         
         if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
@@ -1734,8 +1732,8 @@ export default function MapScreen() {
             key={`user-territory-${territory.territory_id}-${index}`}
             coordinates={polygonCoordinates}
             strokeWidth={3}
-            strokeColor="rgba(34,197,94,0.95)"
-            fillColor="rgba(34,197,94,0.6)"
+            strokeColor="rgba(34,197,94,0.95)" // Green border
+            fillColor="rgba(34,197,94,0.8)"    // SOLID green fill (80% opacity)
             zIndex={1000}
           />
         );
@@ -1745,16 +1743,14 @@ export default function MapScreen() {
       }
     });
   }
-
+  
   function renderFriendTerritories() {
     if (!friendTerritories || friendTerritories.length === 0) {
-      //console.log('No friend territories to render');
       return null;
     }
-
+  
     return friendTerritories.map((territory, index) => {
       try {
-        // Friend territories might have nested coordinates array
         const coordinates = territory.coordinates[0] || territory.coordinates;
         const flatCoords = coordinates.flat();
         
@@ -1765,10 +1761,10 @@ export default function MapScreen() {
               latitude: coord.latitude,
               longitude: coord.longitude,
             }))}
-            fillColor="rgba(255, 105, 180, 0.2)"  // Pink for friends
-            strokeColor="rgba(255, 105, 180, 0.7)"
-            strokeWidth={1.5}
-            zIndex={600} // Between user territories (1000) and DB territories (500)
+            fillColor="rgba(239, 68, 68, 0.8)"    // SOLID red fill (80% opacity)
+            strokeColor="rgba(239, 68, 68, 0.95)" // Red border
+            strokeWidth={2}
+            zIndex={600}
           />
         );
       } catch (error) {
