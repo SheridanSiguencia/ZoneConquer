@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
-    color: Colors.light.text,
+    color: Colors.dark.text,
     fontFamily: 'SpaceMono',
   },
   actionBtn: {
